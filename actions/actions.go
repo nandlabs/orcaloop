@@ -7,43 +7,25 @@ import (
 	"oss.nandlabs.io/orcaloop/models"
 )
 
-// ActionSpec is a specification of Action
-type ActionSpec struct {
-	// Id is the id of the tool
-	Id string `json:"id" yaml:"id"`
-	// Name is the name of the tool
-	Name string `json:"name" yaml:"name"`
-	// Description is the description of the tool
-	Description string `json:"description" yaml:"description"`
-	//Parameters is the parameters of the tool
-	Parameters []models.Schema `json:"parameters" yaml:"parameters"`
-	// Returns is the returns of the tool
-	Returns []models.Schema `json:"returns" yaml:"returns"`
-	// Async  is the async flag of the tool
-	Async bool `json:"async" yaml:"async"`
-	// Endpoint is the endpoint of the tool
-	Endpoint *Endpoint `json:"endpoint" yaml:"endpoint"`
-}
-
 // Action represents an interface for defining actions in the system.
 // Each action is expected to have a unique identifier, name, description,
 // input and output schemas, and an execution method. Additionally, actions
 // can specify whether they are asynchronous and provide a specification
 // and provider information.
 type Action interface {
-	// Id returns the id of the tool. This is expected to be unique.
+	// Id returns the id of the action. This is expected to be unique.
 	Id() string
-	// Name returns the name of the tool
+	// Name returns the name of the action
 	Name() string
-	// Description returns the description of the tool
+	// Description returns the description of the action
 	Description() string
-	// Inputs returns the inputs of the tool
+	// Inputs returns the inputs of the action
 	Inputs() []models.Schema
-	// Outputs returns the outputs of the tool
+	// Outputs returns the outputs of the action
 	Outputs() []models.Schema
 	// Execute function executes the action
 	Execute(*data.Pipeline) error
-	// Spec returns the spec of the tool
+	// Spec returns the spec of the action
 	Spec() *ActionSpec
 	// IsAsync returns true if the action is asynchronous
 	IsAsync() bool

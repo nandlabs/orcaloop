@@ -66,9 +66,11 @@ workFlowStepsLoop:
 			continue
 		case models.StatusFailed:
 			logger.DebugF("Step %s failed aborting the execution of workflow instance ", step.Id, instanceId)
+
 			if workflowState.Status != models.StatusFailed {
 				workflowState.Status = models.StatusFailed
 				workflowState.Error = fmt.Sprintf("Step %s failed for instance id %s", step.Id, instanceId)
+				// No Locking is requried here.
 				err = w.store.SaveState(workflowState)
 				if err != nil {
 					return
@@ -163,7 +165,7 @@ func (w *WorkflowExecutor) executeStep(step *models.Step, parentStepId string, w
 			})
 
 			if err1 != nil {
-				logger.ErrorF("Failed to save step change event for instance %s and step %s", workflowState.Id, step.Id)
+				logger.ErrorF("Failed to execute step for instance %s and step %s", workflowState.Id, step.Id)
 				multiErr := errutils.NewMultiErr(err)
 				multiErr.Add(err1)
 				err = multiErr
@@ -515,7 +517,6 @@ func (w *WorkflowExecutor) OnStepChange(stpChgEvt *models.StepChangeEvent) (err 
 
 	var lock bool
 	var resume bool
-	var pendingEvents []*models.StepChangeEvent
 
 	// Lock the instance
 	lock, err = w.store.LockInstance(stpChgEvt.InstanceId)
@@ -546,10 +547,18 @@ func (w *WorkflowExecutor) OnStepChange(stpChgEvt *models.StepChangeEvent) (err 
 	if err != nil {
 		return
 	}
+	err = w.checkPendingStates(stpChgEvt.InstanceId)
 
+	return
+
+}
+
+func (w WorkflowExecutor) checkPendingStates(instanceId string) (err error) {
+	var pendingEvents []*models.StepChangeEvent
+	resume := false
 	for {
 		// Get the pending events
-		pendingEvents, err = w.store.GetStepChangeEvents(stpChgEvt.InstanceId)
+		pendingEvents, err = w.store.GetStepChangeEvents(instanceId)
 		if err != nil {
 			return
 		}
@@ -571,7 +580,6 @@ func (w *WorkflowExecutor) OnStepChange(stpChgEvt *models.StepChangeEvent) (err 
 		}
 	}
 	return
-
 }
 
 // handleStepChange handles the step change event for a workflow executor.
@@ -622,6 +630,8 @@ func (w *WorkflowExecutor) handleStepChange(stpChgEvt *models.StepChangeEvent) (
 		}
 		// Merge step output to workflow output
 		worflowPipeline.Merge(stepState.Output)
+		// Save the pipeline
+		err = w.store.SavePipeline(worflowPipeline)
 		// Save the step state
 		err = w.store.SaveStepState(stepState)
 		resume = true
