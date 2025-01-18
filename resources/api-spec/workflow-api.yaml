@@ -1,0 +1,624 @@
+openapi: 3.0.3
+info:
+  title: Workflow Management API
+  description: API for managing workflows, including execution and status tracking.
+  version: "1.0.0"
+
+paths:
+  /directory:
+    get:
+      summary: Get all directories
+      operationId: getDirectories
+      responses:
+        "200":
+          description: A list of directories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Directory"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a new directory
+      operationId: createDirectory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Directory"
+      responses:
+        "201":
+          description: Directory created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Directory"
+        "400":
+          description: Invalid directory data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    
+  /directory/{directoryId}:
+    get:
+      summary: Get directory by ID
+      operationId: getDirectory
+      parameters:
+        - name: directoryId
+          in: path
+          required: true
+          description: The ID of the directory
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A single directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Directory"
+        "404":
+          description: Directory not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      summary: Update an existing directory
+      operationId: updateDirectory
+      parameters:
+        - name: directoryId
+          in: path
+          required: true
+          description: The ID of the directory
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Directory"
+      responses:
+        "200":
+          description: Directory updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Directory"
+        "400":
+          description: Invalid directory data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Directory not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    
+
+  /directory/{directoryId}/users:
+    post:
+      summary: Create a new user
+      operationId: createUser
+      parameters:
+        - name: directoryId
+          in: path
+          required: true
+          description: The ID of the Directory
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+      responses:
+        "201":
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid user data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /directory/{directoryId}/users/{userId}:
+    get:
+      summary: Get user by ID
+      operationId: getUser
+      parameters:
+        - name: directoryId
+          in: path
+          required: true
+          description: The ID of the Directory
+          schema:
+            type: string
+        - name: directoryId
+          in: path
+          required: true
+          description: The ID of the user
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A single user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /workflows:
+    get:
+      summary: List all workflows
+      operationId: listWorkflows
+      responses:
+        "200":
+          description: A list of workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workflow"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a new workflow
+      operationId: createWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Workflow"
+      responses:
+        "201":
+          description: Workflow created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "400":
+          description: Invalid workflow data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workflows/{workflowId}:
+    get:
+      summary: Get workflow by ID
+      operationId: getWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: The ID of the workflow
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A single workflow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "404":
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      summary: Delete a workflow by ID
+      operationId: deleteWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: The ID of the workflow
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Workflow deleted successfully
+        "404":
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      summary: Update a workflow by ID
+      operationId: updateWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: The ID of the workflow
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Workflow"
+      responses:
+        "200":
+          description: Workflow updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "400":
+          description: Invalid workflow data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workflows/{workflowId}/execute:
+    post:
+      summary: Execute a workflow
+      operationId: executeWorkflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: The ID of the workflow
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Pipeline"
+      responses:
+        "202":
+          description: Workflow execution started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionStatus"
+        "404":
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workflows/{workflowId}/status:
+    get:
+      summary: Get execution status of a workflow
+      operationId: getWorkflowStatus
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: The ID of the workflow
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workflow execution status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionStatus"
+        "404":
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the workflow
+        name:
+          type: string
+          description: Name of the workflow
+        version:
+          type: string
+          description: Version of the workflow
+        description:
+          type: string
+          description: Description of the workflow
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+      required:
+        - id
+        - name
+        - steps
+
+    Step:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the step
+        type:
+          type: string
+          enum: [Action, Parallel, If, Switch, ForLoop]
+          description: Type of the step
+        parallel:
+          $ref: "#/components/schemas/Parallel"
+        for:
+          $ref: "#/components/schemas/For"
+        if:
+          $ref: "#/components/schemas/If"
+        switch:
+          $ref: "#/components/schemas/Switch"
+        action:
+          $ref: "#/components/schemas/StepAction"
+      required:
+        - id
+        - type
+
+    Parallel:
+      type: object
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+
+    For:
+      type: object
+      properties:
+        loop_var:
+          type: string
+        index_var:
+          type: string
+        items_var:
+          type: string
+        items:
+          type: array
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+
+    If:
+      type: object
+      properties:
+        condition:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+        else_ifs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ElseIf"
+        else:
+          $ref: "#/components/schemas/Else"
+
+    ElseIf:
+      type: object
+      properties:
+        condition:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+
+    Else:
+      type: object
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+
+    Switch:
+      type: object
+      properties:
+        variable:
+          type: string
+        cases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Case"
+
+    Case:
+      type: object
+      properties:
+        value:
+          type: string
+        default:
+          type: boolean
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+
+    StepAction:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        parameters:
+          type: array
+          items:
+            $ref: "#/components/schemas/Parameter"
+        output_names:
+          type: array
+          items:
+            type: string
+
+    Parameter:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        var:
+          type: string
+
+    ExecutionStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [Pending, Running, Completed, Failed, Paused, Skipped]
+        message:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: A machine-readable error code
+        message:
+          type: string
+          description: A short description of the error
+        description:
+          type: string
+          description: A detailed description of the error
+      required:
+        - code
+        - message
+    Pipeline:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name: 
+                type: string
+              value: 
+                oneOf:
+                  - type: string
+                  - type: object
+                  - type: array
+                  - type: boolean
+                  - type: integer
+                  - type: number    
+      required:
+        - id
+    
+    Directory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [local, ldap]
+        
+       
