@@ -6,7 +6,7 @@ import (
 
 	"oss.nandlabs.io/golly/errutils"
 	"oss.nandlabs.io/golly/textutils"
-	"oss.nandlabs.io/orcaloop/data"
+	"oss.nandlabs.io/orcaloop-sdk/data"
 	"oss.nandlabs.io/orcaloop/models"
 	"oss.nandlabs.io/orcaloop/storage"
 	"oss.nandlabs.io/orcaloop/utils"

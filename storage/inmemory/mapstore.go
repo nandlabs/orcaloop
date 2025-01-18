@@ -4,8 +4,8 @@ import (
 	"errors"
 	"sync"
 
+	"oss.nandlabs.io/orcaloop-sdk/data"
 	"oss.nandlabs.io/orcaloop/actions"
-	"oss.nandlabs.io/orcaloop/data"
 	"oss.nandlabs.io/orcaloop/models"
 )
 

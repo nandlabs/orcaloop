@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"oss.nandlabs.io/golly/errutils"
-	"oss.nandlabs.io/orcaloop/data"
+	"oss.nandlabs.io/orcaloop-sdk/data"
 )
 
 func ValidateInputs(actionSpec *ActionSpec, pipeline *data.Pipeline) (valid bool, err error) {

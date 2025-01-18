@@ -1,6 +1,6 @@
 package models
 
-import "oss.nandlabs.io/orcaloop/data"
+import "oss.nandlabs.io/orcaloop-sdk/data"
 
 const (
 	StatusUnknown Status = iota
