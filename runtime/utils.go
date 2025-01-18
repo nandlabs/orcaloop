@@ -10,7 +10,7 @@ var ErrNoPipelineFound = func(id string) error { return fmt.Errorf("pipeline not
 var ErrStepStateNotFound = func(id string) error { return fmt.Errorf("step state not found for step with id %s ", id) }
 var ErrWorkflowStateNotFound = func(id string) error { return fmt.Errorf("workflow state not found for workflow with id %s", id) }
 var ErrWorkflowAlreadyRegistered = func(id string, v int) error {
-	return fmt.Errorf("workflow already registered with id %s and version %i", id, v)
+	return fmt.Errorf("workflow already registered with id %s and version %d", id, v)
 }
 
 func IsWorkflowNotFound(err error) bool {
