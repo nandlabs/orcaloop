@@ -2,7 +2,7 @@ package actions
 
 import (
 	"oss.nandlabs.io/golly/clients"
-	"oss.nandlabs.io/orcaloop/models"
+	"oss.nandlabs.io/orcaloop-sdk/models"
 )
 
 // ActionSpec represents the specification of an action.

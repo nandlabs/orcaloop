@@ -1,9 +1,10 @@
 package runtime
 
 import (
-	"oss.nandlabs.io/orcaloop/models"
+	"oss.nandlabs.io/orcaloop-sdk/models"
 	"oss.nandlabs.io/orcaloop/storage"
-	"oss.nandlabs.io/orcaloop/utils"
+
+	"oss.nandlabs.io/orcaloop-sdk/utils"
 )
 
 type WorkflowManager struct {

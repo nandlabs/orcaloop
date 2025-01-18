@@ -5,8 +5,8 @@ import (
 
 	"oss.nandlabs.io/golly/managers"
 	"oss.nandlabs.io/orcaloop-sdk/data"
+	"oss.nandlabs.io/orcaloop-sdk/models"
 	"oss.nandlabs.io/orcaloop/actions"
-	"oss.nandlabs.io/orcaloop/models"
 	"oss.nandlabs.io/orcaloop/storage"
 )
 
