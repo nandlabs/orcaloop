@@ -3,8 +3,82 @@ package utils
 import (
 	"fmt"
 
+	"oss.nandlabs.io/golly/errutils"
+	"oss.nandlabs.io/orcaloop/actions"
+	"oss.nandlabs.io/orcaloop/data"
 	"oss.nandlabs.io/orcaloop/models"
 )
+
+// GetDecendantsById retrieves the IDs of all child steps for a given step ID within a workflow.
+// It first fetches the step by its ID and then retrieves its child steps.
+//
+// Parameters:
+//   - id: The ID of the step for which child steps are to be retrieved.
+//   - workflow: The workflow containing the steps.
+//
+// Returns:
+//   - ids: A slice of strings containing the IDs of the child steps.
+func GetDecendantsById(id string, workflow *models.Workflow) (steps []*models.Step) {
+	step := GetStepById(id, workflow)
+	if step != nil {
+		steps = GetDecendants(step)
+	}
+	return
+}
+
+// GetDecendants recursively retrieves the IDs of all child steps for a given step.
+// It handles different types of steps including If, Parallel, ForLoop, and Switch steps.
+//
+// Parameters:
+//   - step: A pointer to a models.Step object representing the current step.
+//
+// Returns:
+//   - ids: A slice of strings containing the IDs of all child steps.
+func GetDecendants(step *models.Step) (steps []*models.Step) {
+	switch step.Type {
+	case models.StepTypeIf:
+		if step.If != nil {
+			for _, subStep := range step.If.Steps {
+				steps = append(steps, GetDecendants(subStep)...)
+			}
+			if step.If.ElseIfs != nil {
+				for _, elseIf := range step.If.ElseIfs {
+
+					for _, subStep := range elseIf.Steps {
+						steps = append(steps, GetDecendants(subStep)...)
+					}
+				}
+			}
+			if step.If.Else != nil {
+				for _, subStep := range step.If.Else.Steps {
+					steps = append(steps, GetDecendants(subStep)...)
+				}
+			}
+		}
+	case models.StepTypeParallel:
+		if step.Parallel != nil {
+			for _, subStep := range step.Parallel.Steps {
+				steps = append(steps, GetDecendants(subStep)...)
+			}
+		}
+	case models.StepTypeForLoop:
+		if step.For != nil {
+			for _, subStep := range step.For.Steps {
+				steps = append(steps, GetDecendants(subStep)...)
+			}
+		}
+	case models.StepTypeSwitch:
+		if step.Switch != nil {
+			for _, caseBlock := range step.Switch.Cases {
+				for _, subStep := range caseBlock.Steps {
+					steps = append(steps, GetDecendants(subStep)...)
+				}
+			}
+		}
+	}
+
+	return
+}
 
 // GetStepById retrieves a step from the workflow by its ID.
 // It takes an ID as a string and a workflow of type models.Workflow.
@@ -224,72 +298,32 @@ func ValidateStep(step *models.Step) (err error) {
 	return
 }
 
-// GetDecendantsById retrieves the IDs of all child steps for a given step ID within a workflow.
-// It first fetches the step by its ID and then retrieves its child steps.
+// ValidateInputs checks if all required inputs specified in the actionSpec are present in the pipeline.
+// It returns a boolean indicating whether the inputs are valid and an error if any required inputs are missing.
 //
 // Parameters:
-//   - id: The ID of the step for which child steps are to be retrieved.
-//   - workflow: The workflow containing the steps.
+//   - actionSpec: A pointer to an ActionSpec struct containing the parameters to validate.
+//   - pipeline: A pointer to a Pipeline struct where the inputs are checked.
 //
 // Returns:
-//   - ids: A slice of strings containing the IDs of the child steps.
-func GetDecendantsById(id string, workflow *models.Workflow) (steps []*models.Step) {
-	step := GetStepById(id, workflow)
-	if step != nil {
-		steps = GetDecendants(step)
+//   - valid: A boolean indicating whether all required inputs are present.
+//   - err: An error containing details of any missing required inputs, or nil if all inputs are valid.
+func ValidateInputs(actionSpec *actions.ActionSpec, pipeline *data.Pipeline) (valid bool, err error) {
+	var multiError *errutils.MultiError = errutils.NewMultiErr(nil)
+	for _, input := range actionSpec.Parameters {
+		if input.Required {
+			if !pipeline.Has(input.Name) {
+				err = fmt.Errorf("missing required input %s", input.Name)
+				multiError.Add(err)
+			}
+		}
 	}
-	return
-}
-
-// GetDecendants recursively retrieves the IDs of all child steps for a given step.
-// It handles different types of steps including If, Parallel, ForLoop, and Switch steps.
-//
-// Parameters:
-//   - step: A pointer to a models.Step object representing the current step.
-//
-// Returns:
-//   - ids: A slice of strings containing the IDs of all child steps.
-func GetDecendants(step *models.Step) (steps []*models.Step) {
-	switch step.Type {
-	case models.StepTypeIf:
-		if step.If != nil {
-			for _, subStep := range step.If.Steps {
-				steps = append(steps, GetDecendants(subStep)...)
-			}
-			if step.If.ElseIfs != nil {
-				for _, elseIf := range step.If.ElseIfs {
-
-					for _, subStep := range elseIf.Steps {
-						steps = append(steps, GetDecendants(subStep)...)
-					}
-				}
-			}
-			if step.If.Else != nil {
-				for _, subStep := range step.If.Else.Steps {
-					steps = append(steps, GetDecendants(subStep)...)
-				}
-			}
-		}
-	case models.StepTypeParallel:
-		if step.Parallel != nil {
-			for _, subStep := range step.Parallel.Steps {
-				steps = append(steps, GetDecendants(subStep)...)
-			}
-		}
-	case models.StepTypeForLoop:
-		if step.For != nil {
-			for _, subStep := range step.For.Steps {
-				steps = append(steps, GetDecendants(subStep)...)
-			}
-		}
-	case models.StepTypeSwitch:
-		if step.Switch != nil {
-			for _, caseBlock := range step.Switch.Cases {
-				for _, subStep := range caseBlock.Steps {
-					steps = append(steps, GetDecendants(subStep)...)
-				}
-			}
-		}
+	if multiError.HasErrors() {
+		err = multiError
+		valid = false
+		return
+	} else {
+		valid = true
 	}
 
 	return
