@@ -634,8 +634,14 @@ func (w *WorkflowExecutor) handleStepChange(stpChgEvt *models.StepChangeEvent) (
 		worflowPipeline.Merge(stepState.Output)
 		// Save the pipeline
 		err = w.store.SavePipeline(worflowPipeline)
+		if err != nil {
+			return
+		}
 		// Save the step state
 		err = w.store.SaveStepState(stepState)
+		if err != nil {
+			return
+		}
 		resume = true
 
 	case models.StatusFailed:
