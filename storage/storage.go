@@ -5,7 +5,6 @@ import (
 
 	"oss.nandlabs.io/orcaloop-sdk/data"
 	"oss.nandlabs.io/orcaloop-sdk/models"
-	"oss.nandlabs.io/orcaloop/actions"
 )
 
 // ErrWfNotFound is an error that is returned when the requested item is not found
@@ -14,9 +13,9 @@ var ErrWorkFlowNotFound = func(id string) error { return fmt.Errorf("workflow wi
 
 type Storage interface {
 	// ActionSpec returns the spec of the action
-	ActionSpec(id string) (*actions.ActionSpec, error)
+	ActionSpec(id string) (*models.ActionSpec, error)
 	// ActionSpecs returns a list of action specs
-	ActionSpecs() ([]*actions.ActionSpec, error)
+	ActionSpecs() ([]*models.ActionSpec, error)
 	// Archive archives a workflow configuration
 	ArchiveInstance(workflowID string, archiveInstance bool) error
 	// CreateNewInstance creates a new instance
@@ -36,11 +35,11 @@ type Storage interface {
 	// GetWorkflowByInstance Id retrieves a stored workflow configuration
 	GetWorkflowByInstance(id string) (*models.Workflow, error)
 	// ListActions returns a list of all actions
-	ListActions() ([]*actions.ActionSpec, error)
+	ListActions() ([]*models.ActionSpec, error)
 	// LockInstance locks an instance
 	LockInstance(id string) (bool, error)
 	// SaveAction saves the action
-	SaveAction(action *actions.ActionSpec) error
+	SaveAction(action *models.ActionSpec) error
 	// SaveStepChangeEvent saves the step change event
 	SaveStepChangeEvent(stepEvent *models.StepChangeEvent) error
 	// SavePipeline updates the pipeline configuration of a workflow

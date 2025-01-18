@@ -6,12 +6,11 @@ import (
 
 	"oss.nandlabs.io/orcaloop-sdk/data"
 	"oss.nandlabs.io/orcaloop-sdk/models"
-	"oss.nandlabs.io/orcaloop/actions"
 )
 
 type InMemoryStorage struct {
 	mu               sync.RWMutex
-	actionSpecs      map[string]*actions.ActionSpec
+	actionSpecs      map[string]*models.ActionSpec
 	workflows        map[string]map[int]*models.Workflow  // workflowId -> version -> Workflow
 	instances        map[string]*data.Pipeline            // instanceId -> Pipeline
 	workflowStates   map[string]*models.WorkflowState     // instanceId -> WorkflowState
@@ -22,7 +21,7 @@ type InMemoryStorage struct {
 // NewInMemoryStorage creates a new instance of InMemoryStorage
 func NewInMemoryStorage() *InMemoryStorage {
 	return &InMemoryStorage{
-		actionSpecs:      make(map[string]*actions.ActionSpec),
+		actionSpecs:      make(map[string]*models.ActionSpec),
 		workflows:        make(map[string]map[int]*models.Workflow),
 		instances:        make(map[string]*data.Pipeline),
 		workflowStates:   make(map[string]*models.WorkflowState),
@@ -33,7 +32,7 @@ func NewInMemoryStorage() *InMemoryStorage {
 
 // Implementation of Storage interface methods
 
-func (s *InMemoryStorage) ActionSpec(id string) (*actions.ActionSpec, error) {
+func (s *InMemoryStorage) ActionSpec(id string) (*models.ActionSpec, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -44,11 +43,11 @@ func (s *InMemoryStorage) ActionSpec(id string) (*actions.ActionSpec, error) {
 	return action, nil
 }
 
-func (s *InMemoryStorage) ActionSpecs() ([]*actions.ActionSpec, error) {
+func (s *InMemoryStorage) ActionSpecs() ([]*models.ActionSpec, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var specs []*actions.ActionSpec
+	var specs []*models.ActionSpec
 	for _, spec := range s.actionSpecs {
 		specs = append(specs, spec)
 	}
@@ -148,7 +147,7 @@ func (s *InMemoryStorage) GetWorkflowByInstance(id string) (*models.Workflow, er
 	return nil, nil
 }
 
-func (s *InMemoryStorage) ListActions() ([]*actions.ActionSpec, error) {
+func (s *InMemoryStorage) ListActions() ([]*models.ActionSpec, error) {
 	return s.ActionSpecs()
 }
 
@@ -163,7 +162,7 @@ func (s *InMemoryStorage) LockInstance(id string) (bool, error) {
 	return true, nil
 }
 
-func (s *InMemoryStorage) SaveAction(action *actions.ActionSpec) error {
+func (s *InMemoryStorage) SaveAction(action *models.ActionSpec) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
