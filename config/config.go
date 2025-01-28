@@ -1,6 +1,15 @@
 package config
 
-import "oss.nandlabs.io/golly/rest/server"
+import "oss.nandlabs.io/golly/rest"
+
+const (
+	// InMemoryStorageType represents the local storage type.
+	InMemoryStorageType = "in-memory"
+	// MongoStorageType represents the MongoDB storage type.
+	MongoStorageType = "mongo"
+	// PostGresStorageType represents the SQL storage type.
+	PostGresStorageType = "postgres"
+)
 
 // Orcaloop represents the configuration for the Orcaloop service.
 //
@@ -12,10 +21,10 @@ import "oss.nandlabs.io/golly/rest/server"
 type Orcaloop struct {
 	// The name of the service
 	Name string `json:"name" yaml:"name"`
-	// Storage configuration
-	Storage *StorageConfig `json:"storage" yaml:"storage"`
-	// Listener configuration
-	Listener *server.Options `json:"listener" yaml:"listener"`
+	// StorageConfig configuration
+	StorageConfig *StorageConfig `json:"storage" yaml:"storage"`
+	// ApiSrvConfig configuration
+	ApiSrvConfig *rest.SrvOptions `json:"listener" yaml:"listener"`
 }
 
 // StorageConfig represents the configuration for a storage system.

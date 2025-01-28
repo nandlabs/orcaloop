@@ -1,4 +1,4 @@
-package service
+package api
 
 import (
 	"oss.nandlabs.io/golly/lifecycle"
@@ -12,8 +12,8 @@ type orcaLoopComponent struct {
 	options *config.Orcaloop
 }
 
-// NewOrcaloopComponent creates a new Orcaloop component
-func NewOrcaloopComponent(options *config.Orcaloop) lifecycle.Component {
+// GetApiServer creates a new Orcaloop component
+func GetApiServer(options *config.Orcaloop) lifecycle.Component {
 	return &orcaLoopComponent{
 		SimpleComponent: &lifecycle.SimpleComponent{
 			CompId: options.Name,

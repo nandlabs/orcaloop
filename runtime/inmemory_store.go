@@ -1,31 +1,33 @@
-package inmemory
+package runtime
 
 import (
 	"errors"
-	"sync"
 
 	"oss.nandlabs.io/orcaloop-sdk/data"
+	"oss.nandlabs.io/orcaloop-sdk/events"
 	"oss.nandlabs.io/orcaloop-sdk/models"
+	"oss.nandlabs.io/orcaloop/config"
 )
 
 type InMemoryStorage struct {
-	mu               sync.RWMutex
 	actionSpecs      map[string]*models.ActionSpec
 	workflows        map[string]map[int]*models.Workflow  // workflowId -> version -> Workflow
 	instances        map[string]*data.Pipeline            // instanceId -> Pipeline
-	workflowStates   map[string]*models.WorkflowState     // instanceId -> WorkflowState
-	stepChangeEvents map[string][]*models.StepChangeEvent // instanceId -> StepChangeEvents
+	workflowStates   map[string]*WorkflowState            // instanceId -> WorkflowState
+	stepStates       map[string]map[string]*StepState     // instanceId -> stepId -> StepState
+	stepChangeEvents map[string][]*events.StepChangeEvent // instanceId -> StepChangeEvents
 	lockedInstances  map[string]bool                      // instanceId -> locked (true/false)
 }
 
 // NewInMemoryStorage creates a new instance of InMemoryStorage
-func NewInMemoryStorage() *InMemoryStorage {
+func NewInMemoryStorage(c *config.StorageConfig) *InMemoryStorage {
 	return &InMemoryStorage{
 		actionSpecs:      make(map[string]*models.ActionSpec),
 		workflows:        make(map[string]map[int]*models.Workflow),
 		instances:        make(map[string]*data.Pipeline),
-		workflowStates:   make(map[string]*models.WorkflowState),
-		stepChangeEvents: make(map[string][]*models.StepChangeEvent),
+		workflowStates:   make(map[string]*WorkflowState),
+		stepStates:       make(map[string]map[string]*StepState),
+		stepChangeEvents: make(map[string][]*events.StepChangeEvent),
 		lockedInstances:  make(map[string]bool),
 	}
 }
@@ -33,8 +35,6 @@ func NewInMemoryStorage() *InMemoryStorage {
 // Implementation of Storage interface methods
 
 func (s *InMemoryStorage) ActionSpec(id string) (*models.ActionSpec, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	action, ok := s.actionSpecs[id]
 	if !ok {
@@ -43,9 +43,15 @@ func (s *InMemoryStorage) ActionSpec(id string) (*models.ActionSpec, error) {
 	return action, nil
 }
 
+func (s *InMemoryStorage) ActionEndpoint(id string) (*models.Endpoint, error) {
+	action, err := s.ActionSpec(id)
+	if err != nil {
+		return nil, err
+	}
+	return action.Endpoint, nil
+}
+
 func (s *InMemoryStorage) ActionSpecs() ([]*models.ActionSpec, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var specs []*models.ActionSpec
 	for _, spec := range s.actionSpecs {
@@ -60,16 +66,12 @@ func (s *InMemoryStorage) ArchiveInstance(workflowId string, archiveInstance boo
 }
 
 func (s *InMemoryStorage) CreateNewInstance(workflowId string, instanceId string, pipeline *data.Pipeline) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.instances[instanceId] = pipeline
 	return nil
 }
 
 func (s *InMemoryStorage) DeleteAction(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if _, ok := s.actionSpecs[id]; !ok {
 		return errors.New("action not found")
@@ -78,9 +80,23 @@ func (s *InMemoryStorage) DeleteAction(id string) error {
 	return nil
 }
 
+func (s *InMemoryStorage) DeleteStepChangeEvent(instanceId, eventId string) (err error) {
+
+	events, ok := s.stepChangeEvents[instanceId]
+	if !ok {
+		return
+	}
+	for i, event := range events {
+		if event.EventId == eventId {
+			s.stepChangeEvents[instanceId] = append(events[:i], events[i+1:]...)
+			break
+		}
+	}
+
+	return nil
+}
+
 func (s *InMemoryStorage) GetPipeline(id string) (*data.Pipeline, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	pipeline, ok := s.instances[id]
 	if !ok {
@@ -89,9 +105,7 @@ func (s *InMemoryStorage) GetPipeline(id string) (*data.Pipeline, error) {
 	return pipeline, nil
 }
 
-func (s *InMemoryStorage) GetState(instanceId string) (*models.WorkflowState, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *InMemoryStorage) GetState(instanceId string) (*WorkflowState, error) {
 
 	state, ok := s.workflowStates[instanceId]
 	if !ok {
@@ -100,36 +114,35 @@ func (s *InMemoryStorage) GetState(instanceId string) (*models.WorkflowState, er
 	return state, nil
 }
 
-func (s *InMemoryStorage) GetStepChangeEvents(instanceId string) ([]*models.StepChangeEvent, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *InMemoryStorage) GetStepChangeEvents(instanceId string) (events []*events.StepChangeEvent, err error) {
 
-	events, ok := s.stepChangeEvents[instanceId]
-	if !ok {
-		return nil, errors.New("step change events not found")
-	}
-	return events, nil
+	events = s.stepChangeEvents[instanceId]
+
+	return
 }
 
-func (s *InMemoryStorage) GetStepState(instanceId, stepId string) (*models.StepState, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *InMemoryStorage) GetStepStates(instanceId string) (map[string]*StepState, error) {
 
-	state, ok := s.workflowStates[instanceId]
-	if !ok {
-		return nil, errors.New("workflow state not found")
+	stepStatesMap := s.stepStates[instanceId]
+	if stepStatesMap == nil {
+		stepStatesMap = make(map[string]*StepState)
+		s.stepStates[instanceId] = stepStatesMap
+	}
+	return stepStatesMap, nil
+}
+
+func (s *InMemoryStorage) GetStepState(instanceId, stepId string) (*StepState, error) {
+
+	stepStatesMap := s.stepStates[instanceId]
+	if stepStatesMap == nil {
+		stepStatesMap = make(map[string]*StepState)
+		s.stepStates[instanceId] = stepStatesMap
 	}
 
-	stepState, ok := state.StepStates[stepId]
-	if !ok {
-		return nil, errors.New("step state not found")
-	}
-	return stepState, nil
+	return stepStatesMap[stepId], nil
 }
 
 func (s *InMemoryStorage) GetWorkflow(workflowId string, version int) (*models.Workflow, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	versions, ok := s.workflows[workflowId]
 	if !ok {
@@ -142,74 +155,75 @@ func (s *InMemoryStorage) GetWorkflow(workflowId string, version int) (*models.W
 	return workflow, nil
 }
 
-func (s *InMemoryStorage) GetWorkflowByInstance(id string) (*models.Workflow, error) {
+func (s *InMemoryStorage) GetWorkflowByInstance(id string) (wf *models.Workflow, err error) {
 	// Assume instanceId is somehow linked to a workflowId; not implemented here
-	return nil, nil
+	var workflowState *WorkflowState
+	workflowState, err = s.GetState(id)
+	if err != nil {
+		return
+	}
+	return s.GetWorkflow(workflowState.WorkflowId, workflowState.WorkflowVersion)
 }
 
 func (s *InMemoryStorage) ListActions() ([]*models.ActionSpec, error) {
 	return s.ActionSpecs()
 }
 
+func (s *InMemoryStorage) ListWorkflows() ([]*models.Workflow, error) {
+
+	var workflows []*models.Workflow
+	for _, versions := range s.workflows {
+		for _, workflow := range versions {
+			workflows = append(workflows, workflow)
+		}
+	}
+	return workflows, nil
+}
+
 func (s *InMemoryStorage) LockInstance(id string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.lockedInstances[id] {
-		return false, errors.New("instance already locked")
+		return false, nil
 	}
 	s.lockedInstances[id] = true
 	return true, nil
 }
 
 func (s *InMemoryStorage) SaveAction(action *models.ActionSpec) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.actionSpecs[action.Id] = action
 	return nil
 }
 
-func (s *InMemoryStorage) SaveStepChangeEvent(stepEvent *models.StepChangeEvent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *InMemoryStorage) SaveStepChangeEvent(stepEvent *events.StepChangeEvent) error {
 
 	s.stepChangeEvents[stepEvent.InstanceId] = append(s.stepChangeEvents[stepEvent.InstanceId], stepEvent)
 	return nil
 }
 
 func (s *InMemoryStorage) SavePipeline(pipeline *data.Pipeline) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.instances[pipeline.Id()] = pipeline
 	return nil
 }
 
-func (s *InMemoryStorage) SaveState(workflowState *models.WorkflowState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *InMemoryStorage) SaveState(workflowState *WorkflowState) error {
 
-	s.workflowStates[workflowState.Id] = workflowState
+	s.workflowStates[workflowState.InstanceId] = workflowState
 	return nil
 }
 
-func (s *InMemoryStorage) SaveStepState(stepState *models.StepState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *InMemoryStorage) SaveStepState(stepState *StepState) error {
 
-	state, ok := s.workflowStates[stepState.InstanceId]
-	if !ok {
-		return errors.New("workflow state not found for instance")
+	if _, ok := s.stepStates[stepState.InstanceId]; !ok {
+		s.stepStates[stepState.InstanceId] = make(map[string]*StepState)
 	}
+	s.stepStates[stepState.InstanceId][stepState.StepId] = stepState
 
-	state.StepStates[stepState.StepId] = stepState
 	return nil
 }
 
 func (s *InMemoryStorage) SaveWorkflow(workflow *models.Workflow) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if _, ok := s.workflows[workflow.Id]; !ok {
 		s.workflows[workflow.Id] = make(map[int]*models.Workflow)
@@ -219,12 +233,28 @@ func (s *InMemoryStorage) SaveWorkflow(workflow *models.Workflow) error {
 }
 
 func (s *InMemoryStorage) UnlockInstance(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if !s.lockedInstances[id] {
 		return errors.New("instance is not locked")
 	}
 	delete(s.lockedInstances, id)
 	return nil
+}
+
+func (s *InMemoryStorage) DeleteWorkflow(workflowID string, version int) error {
+
+	if _, ok := s.workflows[workflowID]; !ok {
+		return errors.New("workflow not found")
+	}
+	delete(s.workflows[workflowID], version)
+	return nil
+}
+
+func (s *InMemoryStorage) Config() *config.StorageConfig {
+	return &config.StorageConfig{
+		Type: config.InMemoryStorageType,
+		Provider: &config.Provider{
+			Local: &config.LocalStorage{},
+		},
+	}
 }

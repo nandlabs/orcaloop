@@ -19,3 +19,6 @@
 # Go Coverage report file.
 coverage.txt
 .tmp
+
+# main
+main/*
