@@ -24,16 +24,22 @@ func NewActionExecutor(storage Storage) Executor[*models.Step] {
 	}
 }
 
-func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err error) {
-	logger.DebugF("Executing action step %s with input %v", step.Id, input)
+func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err error) {
+	logger.DebugF("Executing action step %s with input %v", step.Id, pipeline)
 	if step.Action == nil {
 		err = errors.New("no action to execute in the step")
 		return
 	}
 	var actionSpec *models.ActionSpec
 	actionSpec, err = ae.storage.ActionSpec(step.Action.Id)
-	pipeline := input.Clone()
-
+	if err != nil {
+		return
+	}
+	actionPipeline := pipeline.Clone()
+	parametersMap := make(map[string]*models.Schema)
+	for _, param := range actionSpec.Parameters {
+		parametersMap[param.Name] = param
+	}
 	if err != nil {
 		return
 	}
@@ -48,14 +54,22 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 		var inVal any
 		if param.Value != nil {
 			inVal = param.Value
-		} else if pipeline.Has(param.Var) {
-			inVal, err = pipeline.Get(param.Var)
+		} else if actionPipeline.Has(param.Var) {
+			inVal, err = actionPipeline.Get(param.Var)
 			if err != nil {
 				return
 			}
+
 		}
+		_, ok := inVal.(int)
+		if ok && inVal != nil && parametersMap[param.Name].Type == "number" {
+
+			inVal = float64(inVal.(int))
+
+		}
+
 		logger.DebugF("Setting param %s with value :%v", param.Name, inVal)
-		pipeline.Set(param.Name, inVal)
+		actionPipeline.Set(param.Name, inVal)
 
 	}
 
@@ -66,7 +80,7 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 			err = errors.New("action handler not found for action id " + step.Action.Id)
 			return
 		}
-		err = handler.Handle(pipeline)
+		err = handler.Handle(actionPipeline)
 		if err != nil {
 			return
 		}
@@ -75,7 +89,7 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 		for _, result := range step.Action.Results {
 			var outVal any
 
-			outVal, err = pipeline.Get(result.OutputVar)
+			outVal, err = actionPipeline.Get(result.OutputVar)
 			if err != nil {
 				return
 			}
@@ -84,7 +98,7 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 
 		event := &events.StepChangeEvent{
 			EventId:    CreateId(),
-			InstanceId: pipeline.Id(),
+			InstanceId: actionPipeline.Id(),
 			StepId:     step.Id,
 			Status:     models.StatusCompleted,
 			Data:       retMap,
@@ -99,7 +113,7 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 		var res *rest.Response
 		client := rest.NewClient()
 		req := client.NewRequest(actionSpec.Endpoint.Rest.Url, http.MethodPost)
-		req.SetBody(pipeline.Map())
+		req.SetBody(actionPipeline.Map())
 		res, err = client.Execute(req)
 		if err != nil {
 			return
@@ -120,7 +134,7 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 			}
 			event := &events.StepChangeEvent{
 				EventId:    CreateId(),
-				InstanceId: pipeline.Id(),
+				InstanceId: actionPipeline.Id(),
 				StepId:     step.Id,
 				Status:     status,
 				Data:       resMap,
@@ -162,7 +176,7 @@ func (ae *ActionExecutor) Execute(step *models.Step, input *data.Pipeline) (err 
 		if err != nil {
 			return
 		}
-		err = message.WriteJSON(pipeline.Map())
+		err = message.WriteJSON(actionPipeline.Map())
 		if err != nil {
 			return
 		}
