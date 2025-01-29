@@ -21,4 +21,4 @@ coverage.txt
 .tmp
 
 # main
-main/*
+builtin/*
