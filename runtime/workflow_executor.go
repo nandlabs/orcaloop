@@ -119,5 +119,9 @@ func (wfe *WorkflowExecutor) Execute(workflow *models.Workflow, pipeline *data.P
 		}
 
 	}
+	// This is possible only if all steps are completed
+	workflowState.Status = models.StatusCompleted
+	err = wfe.storage.SaveState(workflowState)
+
 	return
 }

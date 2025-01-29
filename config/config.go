@@ -107,3 +107,18 @@ type FirestoreStorage struct {
 	// The name of the database
 	Database string `json:"database" yaml:"database"`
 }
+
+// DefaultConfig returns the default configuration for the Orcaloop service.
+func DefaultConfig() *Orcaloop {
+	restOptions := rest.DefaultSrvOptions()
+	restOptions.Id = "orcaloop-api-server"
+	restOptions.PathPrefix = "/api/v1"
+	return &Orcaloop{
+		Name: "Orcaloop",
+		StorageConfig: &StorageConfig{
+			Type:     InMemoryStorageType,
+			Provider: &Provider{Local: &LocalStorage{PurgeTimeout: 60}},
+		},
+		ApiSrvConfig: restOptions,
+	}
+}

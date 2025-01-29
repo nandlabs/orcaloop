@@ -8,14 +8,21 @@ import (
 
 var orcaloopServiceManager = lifecycle.NewSimpleComponentManager()
 
-func StartService(config *config.Orcaloop) (err error) {
-	//Register Server
+func Init(config *config.Orcaloop) (err error) {
 	err = api.RegisterServer(config, orcaloopServiceManager)
-	if err != nil {
-		return
-	}
+	return
+}
+
+func StartService() (err error) {
+
 	// Start Server
 	orcaloopServiceManager.StartAll()
+	return
+}
+
+func StartAndWait() (err error) {
+
+	orcaloopServiceManager.StartAndWait()
 	return
 }
 
