@@ -13,3 +13,12 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+# Intellij IDE files
+.idea
+# Go Coverage report file.
+coverage.txt
+.tmp
+
+# main
+main/*
