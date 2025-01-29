@@ -1,9 +1,12 @@
 package runtime
 
 import (
+	"errors"
+
 	"oss.nandlabs.io/golly/textutils"
 	"oss.nandlabs.io/orcaloop-sdk/data"
 	"oss.nandlabs.io/orcaloop-sdk/models"
+	"oss.nandlabs.io/orcaloop-sdk/utils"
 )
 
 type WorkflowExecutor struct {
@@ -32,6 +35,33 @@ func (wfe *WorkflowExecutor) Execute(workflow *models.Workflow, pipeline *data.P
 	if err != nil {
 		return
 	}
+	var pendingStep *PendingStep
+
+	pendingStep, err = wfe.storage.GetNextPendingStep(instanceId)
+	if err != nil {
+		return
+	}
+	if pendingStep != nil {
+
+		//GetFirst pending Step
+		if pendingStep.VarName != "" {
+			pipeline.Set(pendingStep.VarName, pendingStep.VarValue)
+		}
+		logger.DebugF("Executing pending step %s", pendingStep.StepId)
+
+		step := utils.GetStepById(pendingStep.StepId, workflow)
+		if step == nil {
+			err = errors.New("Unable to find step with id " + pendingStep.StepId)
+			return
+		}
+		err = se.Execute(step, pipeline)
+		if err != nil {
+			return
+		}
+		err = wfe.storage.DeletePendingStep(instanceId, pendingStep)
+		return
+	}
+
 	for _, step := range workflow.Steps {
 		stepState, ok := stepStates[step.Id]
 		if ok {

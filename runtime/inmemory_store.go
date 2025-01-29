@@ -16,7 +16,8 @@ type InMemoryStorage struct {
 	workflowStates   map[string]*WorkflowState            // instanceId -> WorkflowState
 	stepStates       map[string]map[string]*StepState     // instanceId -> stepId -> StepState
 	stepChangeEvents map[string][]*events.StepChangeEvent // instanceId -> StepChangeEvents
-	lockedInstances  map[string]bool                      // instanceId -> locked (true/false)
+	pendingSteps     map[string][]*PendingStep
+	lockedInstances  map[string]bool // instanceId -> locked (true/false)
 }
 
 // NewInMemoryStorage creates a new instance of InMemoryStorage
@@ -28,6 +29,7 @@ func NewInMemoryStorage(c *config.StorageConfig) *InMemoryStorage {
 		workflowStates:   make(map[string]*WorkflowState),
 		stepStates:       make(map[string]map[string]*StepState),
 		stepChangeEvents: make(map[string][]*events.StepChangeEvent),
+		pendingSteps:     make(map[string][]*PendingStep),
 		lockedInstances:  make(map[string]bool),
 	}
 }
@@ -41,6 +43,14 @@ func (s *InMemoryStorage) ActionSpec(id string) (*models.ActionSpec, error) {
 		return nil, errors.New("action not found")
 	}
 	return action, nil
+}
+func (s *InMemoryStorage) AddPendingSteps(instanceId string, pendingStep ...*PendingStep) error {
+
+	if _, ok := s.pendingSteps[instanceId]; !ok {
+		s.pendingSteps[instanceId] = make([]*PendingStep, 0)
+	}
+	s.pendingSteps[instanceId] = append(pendingStep, s.pendingSteps[instanceId]...)
+	return nil
 }
 
 func (s *InMemoryStorage) ActionEndpoint(id string) (*models.Endpoint, error) {
@@ -79,6 +89,20 @@ func (s *InMemoryStorage) DeleteAction(id string) error {
 	delete(s.actionSpecs, id)
 	return nil
 }
+func (s *InMemoryStorage) DeletePendingStep(instanceId string, pendingStep *PendingStep) (err error) {
+
+	pSteps, ok := s.pendingSteps[instanceId]
+	if !ok {
+		return
+	}
+	for i, pStep := range pSteps {
+		if pStep.StepId == pendingStep.StepId && pStep.VarName == pendingStep.VarName && pStep.VarValue == pendingStep.VarValue {
+			s.pendingSteps[instanceId] = append(pSteps[:i], pSteps[i+1:]...)
+			break
+		}
+	}
+	return
+}
 
 func (s *InMemoryStorage) DeleteStepChangeEvent(instanceId, eventId string) (err error) {
 
@@ -112,6 +136,24 @@ func (s *InMemoryStorage) GetState(instanceId string) (*WorkflowState, error) {
 		return nil, errors.New("workflow state not found")
 	}
 	return state, nil
+}
+
+func (s *InMemoryStorage) GetNextPendingStep(instanceId string) (*PendingStep, error) {
+
+	steps, ok := s.pendingSteps[instanceId]
+	if !ok || len(steps) == 0 {
+		return nil, nil
+	}
+	return steps[0], nil
+}
+
+func (s *InMemoryStorage) GetPendingSteps(instanceId string) (steps []*PendingStep, err error) {
+
+	steps = s.pendingSteps[instanceId]
+	if steps == nil {
+		steps = make([]*PendingStep, 0)
+	}
+	return
 }
 
 func (s *InMemoryStorage) GetStepChangeEvents(instanceId string) (events []*events.StepChangeEvent, err error) {
@@ -178,6 +220,15 @@ func (s *InMemoryStorage) ListWorkflows() ([]*models.Workflow, error) {
 		}
 	}
 	return workflows, nil
+}
+
+func (s *InMemoryStorage) ListWorkflowVersions(workflowID string) ([]*models.Workflow, error) {
+
+	versions := make([]*models.Workflow, 0)
+	for _, wf := range s.workflows[workflowID] {
+		versions = append(versions, wf)
+	}
+	return versions, nil
 }
 
 func (s *InMemoryStorage) LockInstance(id string) (bool, error) {

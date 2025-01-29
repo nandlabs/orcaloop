@@ -83,7 +83,7 @@ func (wfm *WorkflowManager) Save(workflow *models.Workflow) (err error) {
 //
 // Returns:
 //   - err: An error if the workflow could not be started, otherwise nil.
-func (wfm *WorkflowManager) Start(id string, version int, input map[string]interface{}) (instanceId string, err error) {
+func (wfm *WorkflowManager) Start(id string, version int, input map[string]any) (instanceId string, err error) {
 
 	// Get workflow
 	workflow, err := wfm.GetWorkflow(id, version)

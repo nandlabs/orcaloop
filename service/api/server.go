@@ -2,33 +2,26 @@ package api
 
 import (
 	"oss.nandlabs.io/golly/lifecycle"
+	"oss.nandlabs.io/golly/rest"
 	"oss.nandlabs.io/orcaloop/config"
+	"oss.nandlabs.io/orcaloop/runtime"
 )
 
-// Orcaloop Component
-// implements lifcycle.Component
-type orcaLoopComponent struct {
-	*lifecycle.SimpleComponent
-	options *config.Orcaloop
-}
-
-// GetApiServer creates a new Orcaloop component
-func GetApiServer(options *config.Orcaloop) lifecycle.Component {
-	return &orcaLoopComponent{
-		SimpleComponent: &lifecycle.SimpleComponent{
-			CompId: options.Name,
-			StartFunc: func() (err error) {
-
-				return
-			},
-			AfterStart: func(err error) {
-
-			},
-
-			StopFunc: func() (err error) {
-				return
-			},
-		},
-		options: options,
+// GetApiServer creates a new Orcaloop service Api Server
+func RegisterServer(options *config.Orcaloop, manager lifecycle.ComponentManager) (err error) {
+	var storage runtime.Storage
+	var server rest.Server
+	server, err = rest.NewServer(options.ApiSrvConfig)
+	if err != nil {
+		return
 	}
+	storage, err = runtime.GetStorage(options.StorageConfig)
+	if err != nil {
+		return
+	}
+	// Register the workflow service
+	resthandler := NewRestHandler(storage, manager)
+	resthandler.RegisterRoutes(server)
+	manager.Register(server)
+	return
 }

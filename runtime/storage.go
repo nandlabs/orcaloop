@@ -13,7 +13,10 @@ var StorageManager managers.ItemManager[Storage] = managers.NewItemManager[Stora
 
 type Storage interface {
 	Config() *config.StorageConfig
+	//ActionEndpoint
 	ActionEndpoint(id string) (*models.Endpoint, error)
+	//Add Pending Step
+	AddPendingSteps(instanceId string, pendingStep ...*PendingStep) error
 	// ActionSpec returns the spec of the action
 	ActionSpec(id string) (*models.ActionSpec, error)
 	// ActionSpecs returns a list of action specs
@@ -24,6 +27,8 @@ type Storage interface {
 	CreateNewInstance(workflowID string, instanceID string, pipeline *data.Pipeline) error
 	// DeleteAction deletes the action
 	DeleteAction(id string) error
+	// DeletePendingStep deletes the pending step
+	DeletePendingStep(instanceId string, pendingStep *PendingStep) error
 	// Delete Workflow deletes a workflow configuration
 	DeleteWorkflow(workflowID string, version int) error
 	// DeleteStepChangeEvent deletes the step change event
@@ -32,6 +37,10 @@ type Storage interface {
 	GetPipeline(id string) (*data.Pipeline, error)
 	//GetState retrieves the state of a workflow
 	GetState(instanceId string) (*WorkflowState, error)
+	// GetNextPendingStep retrieves the next pending step
+	GetNextPendingStep(instanceId string) (*PendingStep, error)
+	// GetPendingSteps retrieves the pending steps
+	GetPendingSteps(instanceId string) ([]*PendingStep, error)
 	//GetStepChangeEvent retrieves the state change events
 	GetStepChangeEvents(instanceId string) ([]*events.StepChangeEvent, error)
 	//GetStepContext provides step context
@@ -44,6 +53,8 @@ type Storage interface {
 	GetWorkflowByInstance(id string) (*models.Workflow, error)
 	// ListWorkflows returns a list of all workflows
 	ListWorkflows() ([]*models.Workflow, error)
+	// ListWorkflowVersions returns a list of all versions of a workflow
+	ListWorkflowVersions(workflowID string) ([]*models.Workflow, error)
 	// ListActions returns a list of all actions
 	ListActions() ([]*models.ActionSpec, error)
 	// LockInstance locks an instance

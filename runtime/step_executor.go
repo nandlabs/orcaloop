@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"strconv"
 	"sync"
 
 	"oss.nandlabs.io/golly/assertion"
@@ -30,6 +31,10 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 	switch step.Type {
 	case models.StepTypeForLoop:
 		var items []any = step.For.ItemsArr
+		var idx_var string = step.For.IndexVar
+		if idx_var == "" {
+			idx_var = "idx-" + step.Id
+		}
 		if len(items) == 0 {
 			items, err = data.ExtractValue[[]any](pipeline, step.For.ItemsVar)
 			if err != nil {
@@ -38,18 +43,39 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 		}
 		stepState.ChildCount = len(items)
 		err = se.storage.SaveStepState(stepState)
+		if err != nil {
+			return
+		}
 		// Execute the steps for each item in the array
+		var pendingSteps []*PendingStep
+		var childPipeline *data.Pipeline
+		var firstChildStep *models.Step
 		for idx, item := range items {
-			for _, childStep := range step.For.Steps {
-				childPipeline := cloneFor(pipeline, childStep, step.Id)
-				childPipeline.Set(step.For.ItemsVar, item)
-				childPipeline.Set(step.For.IndexVar, idx)
-				err = se.Execute(childStep, childPipeline)
-				if err != nil {
-					return
+			for i, childStep := range step.For.Steps {
+				if i == 0 && idx == 0 {
+					childPipeline = cloneFor(pipeline, childStep, step.Id)
+					childPipeline.Set(step.For.ItemsVar, item)
+					childPipeline.Set(step.For.IndexVar, idx)
+					firstChildStep = childStep
+
+				} else {
+					pendingSteps = append(pendingSteps, &PendingStep{
+						StepId:   childStep.Id,
+						VarName:  idx_var,
+						VarValue: strconv.Itoa(idx),
+					})
 				}
 
 			}
+		}
+		err = se.storage.AddPendingSteps(instanceId, pendingSteps...)
+		if err != nil {
+			return
+		}
+
+		err = se.Execute(firstChildStep, childPipeline)
+		if err != nil {
+			return
 		}
 
 	case models.StepTypeIf:

@@ -24,7 +24,7 @@ type Orcaloop struct {
 	// StorageConfig configuration
 	StorageConfig *StorageConfig `json:"storage" yaml:"storage"`
 	// ApiSrvConfig configuration
-	ApiSrvConfig *rest.SrvOptions `json:"listener" yaml:"listener"`
+	ApiSrvConfig *rest.SrvOptions `json:"api_server" yaml:"api_server"`
 }
 
 // StorageConfig represents the configuration for a storage system.
