@@ -3,6 +3,7 @@ package api
 import (
 	"oss.nandlabs.io/golly/lifecycle"
 	"oss.nandlabs.io/golly/rest"
+	"oss.nandlabs.io/orcaloop-sdk/handlers"
 	"oss.nandlabs.io/orcaloop/config"
 	"oss.nandlabs.io/orcaloop/runtime"
 )
@@ -18,6 +19,9 @@ func RegisterServer(options *config.Orcaloop, manager lifecycle.ComponentManager
 	storage, err = runtime.GetStorage(options.StorageConfig)
 	if err != nil {
 		return
+	}
+	for _, item := range handlers.ActionRegistry.Items() {
+		storage.SaveAction(item.Spec())
 	}
 	// Register the workflow service
 	resthandler := NewRestHandler(storage, manager)
