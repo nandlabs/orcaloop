@@ -22,8 +22,8 @@ func GetStorage(c *config.StorageConfig) (s Storage, err error) {
 			// TODO implement other storage types
 			// case config.MongoStorageType:
 			// 	return NewMongoStorage(config)
-			// case config.PostGresStorageType:
-			// 	return NewPostGresStorage(config)
+			case config.PostGresStorageType:
+				store, err = ConnectPostgres(c)
 			default:
 				err = fmt.Errorf("unknown storage type: %s", c.Type)
 			}
