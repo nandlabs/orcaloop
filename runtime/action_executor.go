@@ -40,9 +40,6 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 	for _, param := range actionSpec.Parameters {
 		parametersMap[param.Name] = param
 	}
-	if err != nil {
-		return
-	}
 
 	if actionSpec == nil {
 		err = errors.New("action action found by id " + step.Action.Name)
@@ -111,8 +108,12 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 
 	case models.EndpointTypeRest:
 		var res *rest.Response
+		var req *rest.Request
 		client := rest.NewClient()
-		req := client.NewRequest(actionSpec.Endpoint.Rest.Url, http.MethodPost)
+		req, err = client.NewRequest(actionSpec.Endpoint.Rest.Url, http.MethodPost)
+		if err != nil {
+			return
+		}
 		req.SetBody(actionPipeline.Map())
 		res, err = client.Execute(req)
 		if err != nil {
