@@ -1,14 +1,16 @@
 package config
 
-import "oss.nandlabs.io/golly/rest"
+import (
+	"oss.nandlabs.io/golly/rest"
+)
 
 const (
 	// InMemoryStorageType represents the local storage type.
 	InMemoryStorageType = "in-memory"
 	// MongoStorageType represents the MongoDB storage type.
 	MongoStorageType = "mongo"
-	// PostGresStorageType represents the SQL storage type.
-	PostGresStorageType = "postgres"
+	// PostgresStorageType represents the SQL storage type.
+	PostgresStorageType = "postgres"
 )
 
 // Orcaloop represents the configuration for the Orcaloop service.
@@ -53,7 +55,7 @@ type Provider struct {
 	// MongoDB storage configuration
 	Mongo *MongoStorage `json:"mongo" yaml:"mongo"`
 	// SQL storage configuration
-	SQL *SQLStorage `json:"sql" yaml:"sql"`
+	PostgreSQL *PostgresStorage `json:"sql" yaml:"sql"`
 }
 
 // LocalStorage represents the configuration for local storage.
@@ -81,18 +83,33 @@ type MongoStorage struct {
 	Database string `json:"database" yaml:"database"`
 }
 
-// SQLStorage represents the configuration for SQL storage.
+// PostgresStorage represents the configuration for SQL storage.
 // It contains the necessary details to connect to a SQL database.
 //
 // Fields:
 //
 //	ConnectionString: The connection string used to connect to the SQL database.
 //	Database: The name of the database to be used.
-type SQLStorage struct {
+type PostgresStorage struct {
 	// The name of the storage
-	ConnectionString string `json:"connectionString" yaml:"connectionString"`
+	// if connection string is present, ignore the rest otherwise use the rest
+	ConnectionString string `json:"connectionString,omitempty" yaml:"connectionString,omitempty"`
 	// The name of the database
-	Database string `json:"database" yaml:"database"`
+	Database string `json:"database,omitempty" yaml:"database,omitempty"`
+	Host     string `json:"host,omitempty" yaml:"host,omitempty"`
+	Port     int    `json:"port,omitempty" yaml:"port,omitempty"`
+	User     string `json:"user,omitempty" yaml:"user,omitempty"`
+	Password string `json:"password,omitempty" yaml:"password,omitempty"`
+	SSLMode  string `json:"sslMode,omitempty" yaml:"sslMode,omitempty"`
+	//Limits for the connection pool
+	MaxLifetimeMs     int   `json:"maxLifetimeMs" yaml:"maxLifetimeMs"`
+	MaxIdleTimeMs     int   `json:"maxIdleTimeMs" yaml:"maxIdleTimeMs"`
+	MaxOpenConns      int   `json:"maxOpenConns" yaml:"maxOpenConns"`
+	MaxIdleConns      int   `json:"maxIdleConns" yaml:"maxIdleConns"`
+	WaitCount         int64 `json:"waitCount" yaml:"waitCount"`
+	MaxIdleClosed     int64 `json:"maxIdleClosed" yaml:"maxIdleClosed"`
+	MaxIdleTimeClosed int64 `json:"maxIdleTimeClosed" yaml:"maxIdleTimeClosed"`
+	MaxLifetimeClosed int64 `json:"maxLifetimeClosed" yaml:"maxLifetimeClosed"`
 }
 
 // FirestoreStorage represents the configuration for Firestore storage.
@@ -113,11 +130,28 @@ func DefaultConfig() *Orcaloop {
 	restOptions := rest.DefaultSrvOptions()
 	restOptions.Id = "orcaloop-api-server"
 	restOptions.PathPrefix = "/api/v1"
+	// return &Orcaloop{
+	// 	Name: "Orcaloop",
+	// 	StorageConfig: &StorageConfig{
+	// 		Type:     InMemoryStorageType,
+	// 		Provider: &Provider{Local: &LocalStorage{PurgeTimeout: 60}},
+	// 	},
+	// 	ApiSrvConfig: restOptions,
+	// }
 	return &Orcaloop{
 		Name: "Orcaloop",
 		StorageConfig: &StorageConfig{
-			Type:     InMemoryStorageType,
-			Provider: &Provider{Local: &LocalStorage{PurgeTimeout: 60}},
+			Type: PostgresStorageType,
+			Provider: &Provider{
+				PostgreSQL: &PostgresStorage{
+					Host:     "localhost",
+					Port:     5432,
+					Database: "orcaloop-dev",
+					User:     "pgadmin_user",
+					Password: "pgadmin_password",
+					SSLMode:  "disable",
+				},
+			},
 		},
 		ApiSrvConfig: restOptions,
 	}

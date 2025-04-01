@@ -6,8 +6,7 @@ import (
 	"oss.nandlabs.io/golly/cli"
 	"oss.nandlabs.io/golly/codec"
 	"oss.nandlabs.io/golly/ioutils"
-	"oss.nandlabs.io/golly/l3"
-	"oss.nandlabs.io/orcaloop/builtin"
+	"oss.nandlabs.io/golly/l3" // Add this line
 	"oss.nandlabs.io/orcaloop/config"
 	"oss.nandlabs.io/orcaloop/service"
 )
@@ -28,8 +27,9 @@ func main() {
 		// Aliases:     []string{"st"}, TODO
 		Handler: func(ctx *cli.Context) (err error) {
 			configFile, exists := ctx.GetFlag(ConfigFile)
+			logger.Info(exists)
 			var options *config.Orcaloop
-			if exists {
+			if exists && configFile != "" {
 
 				logger.InfoF("Using Configuration File %v", configFile)
 				mime := ioutils.GetMimeFromExt(configFile)
@@ -59,7 +59,7 @@ func main() {
 
 			}
 			logger.InfoF("Starting Orcaloop service")
-			builtin.InitActions()
+			// builtin.InitActions()
 
 			err = service.Init(options)
 			if err != nil {
@@ -68,7 +68,6 @@ func main() {
 			err = service.StartAndWait()
 			panic(err)
 		},
-
 		Flags: []cli.Flag{
 			{
 				Name:    ConfigFile,
@@ -80,4 +79,8 @@ func main() {
 	}
 
 	app.AddCommand(startCmd)
+
+	if err := app.Execute(); err != nil {
+		logger.ErrorF("Error executing the command", err)
+	}
 }
