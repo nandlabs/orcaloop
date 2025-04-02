@@ -3,6 +3,7 @@ package runtime
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -52,11 +53,17 @@ func ConnectPostgres(c *config.StorageConfig) (pStorage *PostgresStorage, err er
 
 // Implementation of the Storage interface methods
 func (s *PostgresStorage) ActionSpec(id string) (actionSpec *models.ActionSpec, err error) {
-	query := `SELECT * FROM actions WHERE id = $1`
-	row := s.Database.QueryRow(query, id)
+	query := `SELECT * FROM actions WHERE id = ?`
+	sqlStatement, err := s.Database.Prepare(query)
+	if err != nil {
+		return
+	}
+	row := sqlStatement.QueryRow(id)
 	actionSpec = &models.ActionSpec{}
 	err = row.Scan(&actionSpec.Id, &actionSpec.Name, &actionSpec.Description, &actionSpec.Endpoint)
 	if err != nil {
+		logger.Error("Action not found: %v", err)
+		err = errors.New("action not found")
 		return
 	}
 	return
@@ -82,6 +89,7 @@ func (s *PostgresStorage) ActionSpecs() (actionSpecs []*models.ActionSpec, err e
 }
 
 func (s *PostgresStorage) AddPendingSteps(instanceId string, pendingStep ...*PendingStep) error {
+	// serialize this pendingStep and save it to data
 	return nil
 }
 
@@ -101,11 +109,12 @@ func (s *PostgresStorage) ActionEndpoint(id string) (endpoint *models.Endpoint, 
 }
 
 func (s *PostgresStorage) ArchiveInstance(workflowID string, archiveInstance bool) error {
+	// to be implemented
 	return nil
 }
 
 func (s *PostgresStorage) CreateNewInstance(workflowID string, instanceID string, pipeline *data.Pipeline) (err error) {
-	query := `INSERT INTO workflow_data (id, workflow_id, pipeline_data) VALUES ($1, $2, $3)`
+	query := `INSERT INTO workflow_data (instance_id, workflow_id, pipeline_data) VALUES ($1, $2, $3)`
 	mappedData := pipeline.Map()
 	pipelineJSON, err := json.Marshal(mappedData)
 	if err != nil {
@@ -128,11 +137,12 @@ func (s *PostgresStorage) DeleteAction(id string) (err error) {
 }
 
 func (s *PostgresStorage) DeletePendingStep(instanceID string, pendingStep *PendingStep) error {
+	// soft delete based on step_id and instance_id
 	return nil
 }
 
 func (s *PostgresStorage) DeleteWorkflow(workflowID string, version int) (err error) {
-	query := `Update workflows set is_deleted = true WHERE id = $1 AND version = $2`
+	query := `Update workflows set is_deleted = true WHERE workflow_id = $1 AND version = $2`
 	_, err = s.Database.Exec(query, workflowID, version)
 	if err != nil {
 		return
@@ -141,11 +151,12 @@ func (s *PostgresStorage) DeleteWorkflow(workflowID string, version int) (err er
 }
 
 func (s *PostgresStorage) DeleteStepChangeEvent(instanceID, eventID string) error {
+	// soft delete
 	return nil
 }
 
 func (s *PostgresStorage) GetPipeline(id string) (pipelineData *data.Pipeline, err error) {
-	query := `SELECT pipeline_data FROM workflow_data WHERE id = $1`
+	query := `SELECT pipeline_data FROM workflow_data WHERE instance_id = $1`
 	row := s.Database.QueryRow(query, id)
 	var pipelineJSON []byte
 	err = row.Scan(&pipelineJSON)
@@ -173,6 +184,7 @@ func (s *PostgresStorage) GetState(instanceID string) (state *WorkflowState, err
 }
 
 func (s *PostgresStorage) GetNextPendingStep(instanceID string) (*PendingStep, error) {
+	// fetch the earliest pending step based on the created timestamp
 	return nil, nil
 }
 
@@ -185,7 +197,7 @@ func (s *PostgresStorage) GetStepChangeEvents(instanceID string) ([]*events.Step
 }
 
 func (s *PostgresStorage) GetStepState(instanceID, stepID string) (stepState *StepState, err error) {
-	query := `SELECT id, parent_step, child_count, status, instance_id FROM step_state WHERE instance_id = $1 AND step_id = $2`
+	query := `SELECT step_id, parent_step, child_count, status, instance_id FROM step_state WHERE instance_id = $1 AND step_id = $2`
 	row := s.Database.QueryRow(query, instanceID, stepID)
 	stepState = &StepState{}
 	err = row.Scan(&stepState.StepId, &stepState.ParentStep, &stepState.ChildCount, &stepState.Status, &stepState.InstanceId)
@@ -200,7 +212,7 @@ func (s *PostgresStorage) GetStepStates(instanceID string) (map[string]*StepStat
 }
 
 func (s *PostgresStorage) GetWorkflow(workflowID string, version int) (workflow *models.Workflow, err error) {
-	query := `SELECT * FROM workflows WHERE id = $1 AND version = $2`
+	query := `SELECT * FROM workflows WHERE workflow_id = $1 AND version = $2`
 	row := s.Database.QueryRow(query, workflowID, version)
 	workflow = &models.Workflow{}
 	err = row.Scan(&workflow.Id, &workflow.Version, &workflow.Name, &workflow.Description)
@@ -218,7 +230,7 @@ func (s *PostgresStorage) GetWorkflowByInstance(instanceID string) (workflow *mo
 	if err != nil {
 		return
 	}
-	query = `select * from workflows where id = $1`
+	query = `select * from workflows where workflow_id = $1`
 	row = s.Database.QueryRow(query, workflowID)
 	workflow = &models.Workflow{}
 	err = row.Scan(&workflow.Id, &workflow.Version, &workflow.Name, &workflow.Description)
@@ -247,8 +259,22 @@ func (s *PostgresStorage) ListWorkflows() (workflows []*models.Workflow, err err
 	return
 }
 
-func (s *PostgresStorage) ListWorkflowVersions(workflowID string) ([]*models.Workflow, error) {
-	return nil, nil
+func (s *PostgresStorage) ListWorkflowVersions(workflowID string) (workflows []*models.Workflow, err error) {
+	query := `SELECT * FROM workflows WHERE workflow_id = $1`
+	rows, err := s.Database.Query(query, workflowID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	workflows = make([]*models.Workflow, 0)
+	for rows.Next() {
+		workflow := &models.Workflow{}
+		err = rows.Scan(&workflow.Id, &workflow.Version, &workflow.Name, &workflow.Description)
+		if err != nil {
+			return
+		}
+	}
+	return
 }
 
 func (s *PostgresStorage) ListActions() (actions []*models.ActionSpec, err error) {
@@ -284,8 +310,13 @@ func (s *PostgresStorage) SaveAction(action *models.ActionSpec) (err error) {
 	return
 }
 
-func (s *PostgresStorage) LockInstance(instanceID string) (bool, error) {
-	return false, nil
+func (s *PostgresStorage) LockInstance(instanceID string) (isLocked bool, err error) {
+	query := `Update workflow_data set is_locked = true where instance_id = $1`
+	_, err = s.Database.Exec(query, instanceID)
+	if err != nil {
+		return
+	}
+	return
 }
 
 func (s *PostgresStorage) SaveStepChangeEvent(stepEvent *events.StepChangeEvent) error {
@@ -293,7 +324,7 @@ func (s *PostgresStorage) SaveStepChangeEvent(stepEvent *events.StepChangeEvent)
 }
 
 func (s *PostgresStorage) SavePipeline(pipeline *data.Pipeline) (err error) {
-	query := `UPDATE workflow_data SET pipeline_data = $1 WHERE id = $2`
+	query := `UPDATE workflow_data SET pipeline_data = $1 WHERE instance_id = $2`
 	mappedData := pipeline.Map()
 	pipelineJSON, err := json.Marshal(mappedData)
 	if err != nil {
@@ -316,7 +347,7 @@ func (s *PostgresStorage) SaveState(workflowState *WorkflowState) (err error) {
 }
 
 func (s *PostgresStorage) SaveStepState(stepState *StepState) (err error) {
-	query := `INSERT INTO step_state (id, parent_step, child_count, status, instance_id) VALUES ($1, $2, $3, $4, $5)`
+	query := `INSERT INTO step_state (step_id, parent_step, child_count, status, instance_id) VALUES ($1, $2, $3, $4, $5)`
 	_, err = s.Database.Exec(query, stepState.StepId, stepState.ParentStep, stepState.ChildCount, stepState.Status, stepState.InstanceId)
 	if err != nil {
 		return
@@ -325,7 +356,7 @@ func (s *PostgresStorage) SaveStepState(stepState *StepState) (err error) {
 }
 
 func (s *PostgresStorage) SaveWorkflow(workflow *models.Workflow) (err error) {
-	query := `INSERT INTO workflows (id, version, name, description) VALUES ($1, $2, $3, $4)`
+	query := `INSERT INTO workflows (workflow_id, version, name, description) VALUES ($1, $2, $3, $4)`
 	_, err = s.Database.Exec(query, workflow.Id, workflow.Version, workflow.Name, workflow.Description)
 	if err != nil {
 		return
@@ -334,7 +365,16 @@ func (s *PostgresStorage) SaveWorkflow(workflow *models.Workflow) (err error) {
 }
 
 func (s *PostgresStorage) UnlockInstance(instanceID string) (err error) {
+	query := `UPDATE workflow_data set is_locked = false where instance_id = $1`
+	_, err = s.Database.Exec(query, instanceID)
+	if err != nil {
+		return
+	}
 	return
+}
+
+func (s *PostgresStorage) PrepareStatement(query string) (*sql.Stmt, error) {
+	return s.Database.Prepare(query)
 }
 
 func (s *PostgresStorage) Config() *config.StorageConfig {
