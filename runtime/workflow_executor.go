@@ -61,7 +61,7 @@ func (wfe *WorkflowExecutor) Execute(workflow *models.Workflow, pipeline *data.P
 		err = wfe.storage.DeletePendingStep(instanceId, pendingStep)
 		return
 	}
-
+	logger.InfoF(" steps in workflow %d", len(workflow.Steps))
 	for _, step := range workflow.Steps {
 		stepState, ok := stepStates[step.Id]
 		if ok {

@@ -7,6 +7,7 @@ import (
 	"oss.nandlabs.io/golly/codec"
 	"oss.nandlabs.io/golly/ioutils"
 	"oss.nandlabs.io/golly/l3" // Add this line
+	"oss.nandlabs.io/orcaloop/builtin"
 	"oss.nandlabs.io/orcaloop/config"
 	"oss.nandlabs.io/orcaloop/service"
 )
@@ -59,7 +60,7 @@ func main() {
 
 			}
 			logger.InfoF("Starting Orcaloop service")
-			// builtin.InitActions()
+			builtin.InitActions()
 
 			err = service.Init(options)
 			if err != nil {

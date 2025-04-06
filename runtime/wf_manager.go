@@ -98,7 +98,9 @@ func (wfm *WorkflowManager) Start(id string, version int, input map[string]any) 
 	pipeline.Set(data.WorkflowIdKey, id)
 	pipeline.Set(data.WorkflowVersionKey, version)
 	// Save pipeline
-	err = wfm.store.SavePipeline(pipeline)
+	// err = wfm.store.SavePipeline(pipeline)
+	logger.InfoF("Saving pipeline %v", pipeline)
+	err = wfm.store.CreateNewInstance(id, instanceId, pipeline)
 	if err != nil {
 		return
 	}
