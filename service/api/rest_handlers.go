@@ -213,9 +213,37 @@ func (rh *RestHandler) SystemAction(server rest.Server) {
 
 }
 
+func (rh *RestHandler) DeleteWorkflow(ctx rest.ServerContext) {
+	var err error
+	var id string
+	id, err = ctx.GetParam("id", rest.PathParam)
+	if err != nil || id == "" {
+		RespondWithError(ctx, http.StatusBadRequest, "Invalid id", err)
+		return
+	}
+	versionStr, err := ctx.GetParam("version", rest.PathParam)
+	if err != nil || versionStr == "" {
+		RespondWithError(ctx, http.StatusBadRequest, "Invalid version", err)
+		return
+	}
+	version, err := strconv.Atoi(versionStr)
+	if err != nil {
+		RespondWithError(ctx, http.StatusBadRequest, "Invalid version", err)
+		return
+	}
+	err = rh.wfm.DeleteWorkflow(id, version)
+	if err != nil {
+		RespondWithError(ctx, http.StatusInternalServerError, fmt.Sprintf("Failed to delete workflow with id %s", id), err)
+		return
+	}
+
+	ctx.SetStatusCode(http.StatusNoContent)
+}
+
 func (rh *RestHandler) RegisterRoutes(server rest.Server) {
 	server.Post("/workflows", rh.RegisterWorflow)
 	server.Get("/workflows", rh.GetAllWorkflows)
+	server.Delete("/workflow/:id/:version", rh.DeleteWorkflow)
 	server.Get("/workflows/:id", rh.GetWorkflowVersions)
 	server.Get("/workflows/:id/:version", rh.GetWorkflow)
 	server.Post("/instances/start", rh.Start)

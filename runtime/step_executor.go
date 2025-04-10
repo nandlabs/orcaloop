@@ -15,19 +15,21 @@ type StepExecutor struct {
 }
 
 func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err error) {
-
 	// Start the execution of the step
-
 	instanceId := pipeline.Id()
 	parentId := pipeline.GetParent()
-
+	iteration, err := data.ExtractValue[int](pipeline, data.StepIterationKey)
+	if err != nil {
+		iteration = 0
+	}
+	logger.DebugF("Executing Step %s with parent %s and iteration %d", step.Id, parentId, iteration)
 	stepState := &StepState{
 		InstanceId: instanceId,
 		StepId:     step.Id,
 		ParentStep: parentId,
+		Iteration:  iteration,
 		Status:     models.StatusRunning,
 	}
-
 	switch step.Type {
 	case models.StepTypeForLoop:
 		var items []any = step.For.ItemsArr
@@ -41,9 +43,13 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 				return
 			}
 		}
-		stepState.ChildCount = len(items)
+		stepState.ChildCount = len(items) * len(step.For.Steps)
 		err = se.storage.SaveStepState(stepState)
 		if err != nil {
+			return
+		}
+		if stepState.ChildCount == 0 {
+			stepState.Status = models.StatusSkipped
 			return
 		}
 		// Execute the steps for each item in the array
@@ -56,28 +62,28 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 					childPipeline = cloneFor(pipeline, childStep, step.Id)
 					childPipeline.Set(step.For.ItemsVar, item)
 					childPipeline.Set(step.For.IndexVar, idx)
+					childPipeline.Set(data.ParentIdKey, step.Id)
 					firstChildStep = childStep
-
 				} else {
 					pendingSteps = append(pendingSteps, &PendingStep{
-						StepId:   childStep.Id,
-						VarName:  idx_var,
-						VarValue: strconv.Itoa(idx),
+						Id:        CreateId(),
+						ParentId:  step.Id,
+						Iteration: idx,
+						StepId:    childStep.Id,
+						VarName:   idx_var,
+						VarValue:  strconv.Itoa(idx),
 					})
 				}
-
 			}
 		}
 		err = se.storage.AddPendingSteps(instanceId, pendingSteps...)
 		if err != nil {
 			return
 		}
-
 		err = se.Execute(firstChildStep, childPipeline)
 		if err != nil {
 			return
 		}
-
 	case models.StepTypeIf:
 		var condition bool
 		condition, err = pipeline.EvaluateCondition(step.If.Condition)
@@ -85,7 +91,6 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 			return
 		}
 		var steps []*models.Step
-
 		if condition {
 			steps = step.If.Steps
 		} else {
@@ -99,7 +104,6 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 						steps = elseIf.Steps
 						break
 					}
-
 				}
 			}
 			if (!condition) && (step.If.Else != nil) {
@@ -117,7 +121,6 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 				}
 			}
 		}
-
 	case models.StepTypeParallel:
 		stepState.ChildCount = len(step.Parallel.Steps)
 		err = se.storage.SaveStepState(stepState)
@@ -138,7 +141,6 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 				err = multiErr
 			}
 		}
-
 	case models.StepTypeSwitch:
 		var value any
 		value, err = data.ExtractValue[any](pipeline, step.Switch.Variable)
@@ -159,7 +161,6 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 				break
 			}
 		}
-
 		if !found {
 			steps = defaultSteps
 		}
@@ -174,7 +175,6 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 				}
 			}
 		}
-
 	case models.StepTypeAction:
 		stepState.ChildCount = 0
 		err = se.storage.SaveStepState(stepState)
@@ -187,16 +187,12 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 			return
 		}
 	}
-
 	return
 }
 
 func cloneFor(pipeline *data.Pipeline, step *models.Step, parent string) (clone *data.Pipeline) {
-
 	clone = pipeline.Clone()
 	clone.Set(data.StepIdKey, step.Id)
 	clone.Set(data.ParentIdKey, parent)
-
 	return
-
 }

@@ -37,13 +37,11 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 	}
 	actionPipeline := pipeline.Clone()
 	parametersMap := make(map[string]*models.Schema)
-	for _, param := range actionSpec.Parameters {
-		parametersMap[param.Name] = param
+	if actionSpec.Parameters != nil {
+		for _, param := range actionSpec.Parameters {
+			parametersMap[param.Name] = param
+		}
 	}
-	if err != nil {
-		return
-	}
-
 	if actionSpec == nil {
 		err = errors.New("action action found by id " + step.Action.Name)
 		return
@@ -59,18 +57,14 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 			if err != nil {
 				return
 			}
-
 		}
 		_, ok := inVal.(int)
 		if ok && inVal != nil && parametersMap[param.Name].Type == "number" {
 
 			inVal = float64(inVal.(int))
-
 		}
-
 		logger.DebugF("Setting param %s with value :%v", param.Name, inVal)
 		actionPipeline.Set(param.Name, inVal)
-
 	}
 
 	switch actionSpec.Endpoint.Type {
@@ -85,17 +79,23 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 			return
 		}
 		retMap := make(map[string]any)
-
 		for _, result := range step.Action.Results {
 			var outVal any
-
 			outVal, err = actionPipeline.Get(result.OutputVar)
 			if err != nil {
 				return
 			}
 			retMap[result.PipelineVar] = outVal
 		}
-
+		if actionPipeline.Has(data.StepIterationKey) {
+			iteration, err := actionPipeline.Get(data.StepIterationKey)
+			if err != nil {
+				return err
+			}
+			retMap[data.StepIterationKey] = iteration
+		} else {
+			retMap[data.StepIterationKey] = 0
+		}
 		event := &events.StepChangeEvent{
 			EventId:    CreateId(),
 			InstanceId: actionPipeline.Id(),
@@ -108,11 +108,14 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 			return
 		}
 		logger.DebugF("Event Sent to stepChangeHandler %v", event)
-
 	case models.EndpointTypeRest:
 		var res *rest.Response
+		var req *rest.Request
 		client := rest.NewClient()
-		req := client.NewRequest(actionSpec.Endpoint.Rest.Url, http.MethodPost)
+		req, err = client.NewRequest(actionSpec.Endpoint.Rest.Url, http.MethodPost)
+		if err != nil {
+			return
+		}
 		req.SetBody(actionPipeline.Map())
 		res, err = client.Execute(req)
 		if err != nil {
@@ -126,7 +129,6 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 			if err != nil {
 				return errors.New("failed to decode response for action " + step.Action.Id + " with error " + err.Error())
 			}
-
 			status := models.StatusFailed
 			if _, ok := resMap[data.ErrorKey]; !ok {
 
@@ -139,7 +141,6 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 				Status:     status,
 				Data:       resMap,
 			}
-
 			err = stepChangeHandler.Handle(event)
 			if err != nil {
 				return
@@ -147,7 +148,6 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 		case http.StatusAccepted:
 			// This is an async call, we just fire and forget
 			logger.InfoF("action %s accepted", step.Action.Id)
-
 		case http.StatusInternalServerError:
 			// try parsing the error message
 			var errMessage *models.Error = &models.Error{}
@@ -156,13 +156,9 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 				err = errors.New("Unable to execute the rest action for  " + actionSpec.Id)
 				return
 			}
-
 			err = fmt.Errorf("unable to execute the rest action for  %s with error %s", actionSpec.Id, errMessage.Message)
-
 			return
-
 		}
-
 	case models.EndpointTypeMessaging:
 		var u *url.URL
 		var message messaging.Message
@@ -183,6 +179,5 @@ func (ae *ActionExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (e
 		err = manager.Send(u, message)
 		return
 	}
-
 	return
 }
