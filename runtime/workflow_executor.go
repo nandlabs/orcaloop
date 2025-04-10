@@ -42,8 +42,13 @@ func (wfe *WorkflowExecutor) Execute(workflow *models.Workflow, pipeline *data.P
 	logger.DebugF("Pending Step %v", pendingStep)
 	if pendingStep != nil {
 		//GetFirst pending Step
-		if pendingStep.VarName != "" {
-			pipeline.Set(pendingStep.VarName, pendingStep.VarValue)
+		// if pendingStep.VarName != "" {
+		// 	pipeline.Set(pendingStep.VarName, pendingStep.VarValue)
+		// }
+		if pendingStep.Vars != nil {
+			for k, v := range pendingStep.Vars {
+				pipeline.Set(k, v)
+			}
 		}
 		logger.DebugF("Executing pending step %v", pendingStep)
 		step := utils.GetStepById(pendingStep.StepId, workflow)
@@ -69,10 +74,18 @@ func (wfe *WorkflowExecutor) Execute(workflow *models.Workflow, pipeline *data.P
 			return
 		}
 	}
+	// create empty array
+	var workflowStepsArr = make([]*models.Step, 0)
 	for _, step := range workflow.Steps {
+		decendents := utils.GetDecendants(step)
+		workflowStepsArr = append(workflowStepsArr, decendents...)
+		workflowStepsArr = append(workflowStepsArr, step)
+	}
+	for _, step := range workflowStepsArr {
 		stepStateArr, ok := stepStates[step.Id]
 		if ok {
 			for _, stepState := range stepStateArr {
+				logger.DebugF("Checking for Step %s with state %v", step.Id, stepState)
 				switch stepState.Status {
 				case models.StatusCompleted, models.StatusSkipped:
 					continue

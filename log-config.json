@@ -1,7 +1,7 @@
 {
     "format": "text",
     "async": true,
-    "defaultLvl": "INFO",
+    "defaultLvl": "DEBUG",
     "includeFunction": true,
     "includeLineNum": true,
     "pkgConfigs": [],

@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"strconv"
 	"sync"
 
 	"oss.nandlabs.io/golly/assertion"
@@ -15,6 +14,7 @@ type StepExecutor struct {
 }
 
 func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err error) {
+	logger.DebugF("Executing step %s with step %v", step.Id, step)
 	// Start the execution of the step
 	instanceId := pipeline.Id()
 	parentId := pipeline.GetParent()
@@ -33,10 +33,11 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 	switch step.Type {
 	case models.StepTypeForLoop:
 		var items []any = step.For.ItemsArr
-		var idx_var string = step.For.IndexVar
-		if idx_var == "" {
-			idx_var = "idx-" + step.Id
-		}
+		// var idx_var string = step.For.IndexVar
+		// if idx_var == "" {
+		// 	idx_var = "idx-" + step.Id
+		// }
+
 		if len(items) == 0 {
 			items, err = data.ExtractValue[[]any](pipeline, step.For.ItemsVar)
 			if err != nil {
@@ -60,18 +61,29 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 			for i, childStep := range step.For.Steps {
 				if i == 0 && idx == 0 {
 					childPipeline = cloneFor(pipeline, childStep, step.Id)
+					if step.For.Loopvar != "" {
+						childPipeline.Set(step.For.Loopvar, item)
+					}
+					if step.For.IndexVar != "" {
+						childPipeline.Set(step.For.IndexVar, idx)
+					}
 					childPipeline.Set(step.For.ItemsVar, item)
-					childPipeline.Set(step.For.IndexVar, idx)
 					childPipeline.Set(data.ParentIdKey, step.Id)
 					firstChildStep = childStep
 				} else {
+					var vars = make(map[string]any)
+					if step.For.IndexVar != "" {
+						vars[step.For.IndexVar] = idx
+					}
+					if step.For.Loopvar != "" {
+						vars[step.For.Loopvar] = item
+					}
 					pendingSteps = append(pendingSteps, &PendingStep{
 						Id:        CreateId(),
 						ParentId:  step.Id,
 						Iteration: idx,
 						StepId:    childStep.Id,
-						VarName:   idx_var,
-						VarValue:  strconv.Itoa(idx),
+						Vars:      vars,
 					})
 				}
 			}
@@ -141,6 +153,12 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 				err = multiErr
 			}
 		}
+		// if err == nil {
+		// 	stepState.Status = models.StatusCompleted
+		// } else {
+		// 	stepState.Status = models.StatusFailed
+		// }
+		// err = se.storage.SaveStepState(stepState)
 	case models.StepTypeSwitch:
 		var value any
 		value, err = data.ExtractValue[any](pipeline, step.Switch.Variable)
@@ -177,10 +195,12 @@ func (se *StepExecutor) Execute(step *models.Step, pipeline *data.Pipeline) (err
 		}
 	case models.StepTypeAction:
 		stepState.ChildCount = 0
+		logger.DebugF("Executing action step %s with input %v", step.Id, pipeline)
 		err = se.storage.SaveStepState(stepState)
 		if err != nil {
 			return
 		}
+		logger.DebugF("Saved step state %v", stepState)
 		executor := NewActionExecutor(se.storage)
 		err = executor.Execute(step, pipeline)
 		if err != nil {

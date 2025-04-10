@@ -96,7 +96,7 @@ func (s *InMemoryStorage) DeletePendingStep(instanceId string, pendingStep *Pend
 		return
 	}
 	for i, pStep := range pSteps {
-		if pStep.StepId == pendingStep.StepId && pStep.VarName == pendingStep.VarName && pStep.VarValue == pendingStep.VarValue {
+		if pStep.StepId == pendingStep.StepId {
 			s.pendingSteps[instanceId] = append(pSteps[:i], pSteps[i+1:]...)
 			break
 		}
