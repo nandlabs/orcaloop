@@ -98,6 +98,7 @@ type PostgresStorage struct {
 	Database string `json:"database,omitempty" yaml:"database,omitempty"`
 	Host     string `json:"host,omitempty" yaml:"host,omitempty"`
 	Port     int    `json:"port,omitempty" yaml:"port,omitempty"`
+	Schema   string `json:"schema,omitempty" yaml:"schema,omitempty"`
 	User     string `json:"user,omitempty" yaml:"user,omitempty"`
 	Password string `json:"password,omitempty" yaml:"password,omitempty"`
 	SSLMode  string `json:"sslMode,omitempty" yaml:"sslMode,omitempty"`

@@ -37,16 +37,16 @@ type Storage interface {
 	GetPipeline(id string) (*data.Pipeline, error)
 	//GetState retrieves the state of a workflow
 	GetState(instanceId string) (*WorkflowState, error)
-	// GetNextPendingStep retrieves the next pending step
-	GetNextPendingStep(instanceId string) (*PendingStep, error)
+	// GetAndRemoveNextPendingStep retrieves the next pending step
+	GetAndRemoveNextPendingStep(instanceId string) (*PendingStep, error)
 	// GetPendingSteps retrieves the pending steps
 	GetPendingSteps(instanceId string) ([]*PendingStep, error)
 	//GetStepChangeEvent retrieves the state change events
 	GetStepChangeEvents(instanceId string) ([]*events.StepChangeEvent, error)
 	//GetStepContext provides step context
-	GetStepState(instanceId, stepId string) (*StepState, error)
+	GetStepState(instanceId, stepId string, iteration int) (*StepState, error)
 	// Get StepStates retrieves the states of all steps in a workflow
-	GetStepStates(instanceId string) (map[string]*StepState, error)
+	GetStepStates(instanceId string) (map[string][]*StepState, error)
 	// GetWorkflow retrieves a stored workflow configuration
 	GetWorkflow(workflowID string, version int) (*models.Workflow, error)
 	// GetWorkflowByInstance Id retrieves a stored workflow configuration

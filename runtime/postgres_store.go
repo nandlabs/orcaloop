@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	_ "github.com/lib/pq"
+	"oss.nandlabs.io/golly/codec"
 	"oss.nandlabs.io/orcaloop-sdk/data"
 	"oss.nandlabs.io/orcaloop-sdk/events"
 	"oss.nandlabs.io/orcaloop-sdk/models"
@@ -25,7 +25,10 @@ func ConnectPostgres(c *config.StorageConfig) (pStorage *PostgresStorage, err er
 		dsn = c.Provider.PostgreSQL.ConnectionString
 	} else {
 		// generate dsn
-		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", c.Provider.PostgreSQL.Host, c.Provider.PostgreSQL.Port, c.Provider.PostgreSQL.User, c.Provider.PostgreSQL.Password, c.Provider.PostgreSQL.Database, c.Provider.PostgreSQL.SSLMode)
+		if c.Provider.PostgreSQL.Schema == "" {
+			c.Provider.PostgreSQL.Schema = "public"
+		}
+		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s search_path=%s", c.Provider.PostgreSQL.Host, c.Provider.PostgreSQL.Port, c.Provider.PostgreSQL.User, c.Provider.PostgreSQL.Password, c.Provider.PostgreSQL.Database, c.Provider.PostgreSQL.SSLMode, c.Provider.PostgreSQL.Schema)
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -53,14 +56,14 @@ func ConnectPostgres(c *config.StorageConfig) (pStorage *PostgresStorage, err er
 
 // Implementation of the Storage interface methods
 func (s *PostgresStorage) ActionSpec(id string) (actionSpec *models.ActionSpec, err error) {
-	query := `SELECT id, name, description, endpoint FROM actions WHERE id = $1 AND is_deleted = false`
+	query := `SELECT id, name, description, endpoint FROM actions WHERE id = $1 AND is_deleted = $2`
 	sqlStatement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to fetch action spec: %v", err)
 		err = errors.New("error preparing statement to fetch action spec")
 		return
 	}
-	row := sqlStatement.QueryRow(id)
+	row := sqlStatement.QueryRow(id, false)
 	actionSpec = &models.ActionSpec{}
 	var endpointJSON []byte
 	err = row.Scan(&actionSpec.Id, &actionSpec.Name, &actionSpec.Description, &endpointJSON)
@@ -69,7 +72,7 @@ func (s *PostgresStorage) ActionSpec(id string) (actionSpec *models.ActionSpec, 
 		err = errors.New("error scanning action spec")
 		return
 	}
-	err = json.Unmarshal(endpointJSON, &actionSpec.Endpoint)
+	err = codec.JsonCodec().DecodeBytes(endpointJSON, &actionSpec.Endpoint)
 	if err != nil {
 		logger.ErrorF("Error unmarshalling action spec endpoint: %v", err)
 		err = errors.New("error unmarshalling action spec endpoint")
@@ -79,14 +82,14 @@ func (s *PostgresStorage) ActionSpec(id string) (actionSpec *models.ActionSpec, 
 }
 
 func (s *PostgresStorage) ActionSpecs() (actionSpecs []*models.ActionSpec, err error) {
-	query := `SELECT * FROM actions WHERE is_deleted = false`
+	query := `SELECT * FROM actions WHERE is_deleted = $1`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to fetch action specs: %v", err)
 		err = errors.New("error preparing statement to fetch action specs")
 		return
 	}
-	rows, err := statement.Query()
+	rows, err := statement.Query(false)
 	if err != nil {
 		logger.ErrorF("Error executing query: %v", err)
 		err = errors.New("error fetching action specs")
@@ -108,8 +111,7 @@ func (s *PostgresStorage) ActionSpecs() (actionSpecs []*models.ActionSpec, err e
 }
 
 func (s *PostgresStorage) AddPendingSteps(instanceId string, pendingStep ...*PendingStep) (err error) {
-	// serialize this pendingStep and save it to data
-	query := `INSERT INTO pending_steps (instance_id, step_id, data) VALUES ($1, $2, $3)`
+	query := `INSERT INTO pending_steps (id, instance_id, step_id, data) VALUES ($1, $2, $3, $4)`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to add pending step: %v", err)
@@ -118,13 +120,13 @@ func (s *PostgresStorage) AddPendingSteps(instanceId string, pendingStep ...*Pen
 	}
 	for _, step := range pendingStep {
 		var pendingStepJSON []byte
-		pendingStepJSON, err = json.Marshal(step)
+		pendingStepJSON, err = codec.JsonCodec().EncodeToBytes(step)
 		if err != nil {
 			logger.ErrorF("Error marshalling pending step: %v", err)
 			err = errors.New("error marshalling pending step")
 			return
 		}
-		_, err = statement.Exec(instanceId, step.StepId, pendingStepJSON)
+		_, err = statement.Exec(step.Id, instanceId, step.StepId, pendingStepJSON)
 		if err != nil {
 			logger.ErrorF("Error executing query: %v", err)
 			err = errors.New("error adding pending step/s")
@@ -150,7 +152,7 @@ func (s *PostgresStorage) ActionEndpoint(id string) (endpoint *models.Endpoint, 
 		err = errors.New("error scanning action endpoint")
 		return
 	}
-	err = json.Unmarshal(endpointJSON, &endpoint)
+	err = codec.JsonCodec().DecodeBytes(endpointJSON, &endpoint)
 	if err != nil {
 		logger.ErrorF("Error unmarshalling endpoint: %v", err)
 		err = errors.New("error unmarshalling action endpoint")
@@ -173,7 +175,7 @@ func (s *PostgresStorage) CreateNewInstance(workflowID string, instanceID string
 		return
 	}
 	mappedData := pipeline.Map()
-	pipelineJSON, err := json.Marshal(mappedData)
+	pipelineJSON, err := codec.JsonCodec().EncodeToBytes(mappedData)
 	if err != nil {
 		logger.ErrorF("Error marshalling pipeline data: %v", err)
 		err = errors.New("error marshalling pipeline data")
@@ -190,14 +192,14 @@ func (s *PostgresStorage) CreateNewInstance(workflowID string, instanceID string
 }
 
 func (s *PostgresStorage) DeleteAction(id string) (err error) {
-	query := `UPDATE actions set is_deleted = true WHERE id = $1`
+	query := `UPDATE actions set is_deleted = $1 WHERE id = $2`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to delete action: %v", err)
 		err = errors.New("error preparing statement to delete action")
 		return
 	}
-	_, err = statement.Exec(id)
+	_, err = statement.Exec(true, id)
 	if err != nil {
 		logger.ErrorF("Error executing query to delete action: %v", err)
 		err = errors.New("error deleting action")
@@ -207,15 +209,14 @@ func (s *PostgresStorage) DeleteAction(id string) (err error) {
 }
 
 func (s *PostgresStorage) DeletePendingStep(instanceID string, pendingStep *PendingStep) (err error) {
-	// soft delete based on step_id and instance_id
-	query := `UPDATE pending_steps SET is_deleted = true WHERE instance_id = $1 AND step_id = $2`
+	query := `Delete from pending_steps WHERE id = $1`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to delete pending step: %v", err)
 		err = errors.New("error preparing statement to delete pending step")
 		return
 	}
-	_, err = statement.Exec(instanceID, pendingStep.StepId)
+	_, err = statement.Exec(pendingStep.Id)
 	if err != nil {
 		logger.ErrorF("Error executing query to delete pending step: %v", err)
 		err = errors.New("error deleting pending step")
@@ -225,14 +226,14 @@ func (s *PostgresStorage) DeletePendingStep(instanceID string, pendingStep *Pend
 }
 
 func (s *PostgresStorage) DeleteWorkflow(workflowID string, version int) (err error) {
-	query := `Update workflows set is_deleted = true WHERE workflow_id = $1 AND version = $2`
+	query := `Update workflows set is_deleted = $1 WHERE workflow_id = $2 AND version = $3`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to delete a workflow: %v", err)
 		err = errors.New("error preparing statement to delete a workflow")
 		return
 	}
-	_, err = statement.Exec(workflowID, version)
+	_, err = statement.Exec(true, workflowID, version)
 	if err != nil {
 		logger.ErrorF("Error executing query to delete a workflow: %v", err)
 		err = errors.New("error deleting workflow")
@@ -243,14 +244,14 @@ func (s *PostgresStorage) DeleteWorkflow(workflowID string, version int) (err er
 
 func (s *PostgresStorage) DeleteStepChangeEvent(instanceID, eventID string) (err error) {
 	// soft delete
-	query := `UPDATE step_change_event SET is_deleted = true WHERE instance_id = $1 AND event_id = $2`
+	query := `UPDATE step_change_event SET is_deleted = $1 WHERE instance_id = $2 AND event_id = $3`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to delete step change event: %v", err)
 		err = errors.New("error preparing statement to delete step change event")
 		return
 	}
-	_, err = statement.Exec(instanceID, eventID)
+	_, err = statement.Exec(true, instanceID, eventID)
 	if err != nil {
 		logger.ErrorF("Error executing query to delete step change event: %v", err)
 		err = errors.New("error deleting step change event")
@@ -276,7 +277,7 @@ func (s *PostgresStorage) GetPipeline(id string) (pipelineData *data.Pipeline, e
 		return
 	}
 	var pipelineDataMap map[string]any
-	err = json.Unmarshal(pipelineJSON, &pipelineDataMap)
+	err = codec.JsonCodec().DecodeBytes(pipelineJSON, &pipelineDataMap)
 	if err != nil {
 		logger.ErrorF("Error unmarshalling pipeline data: %v", err)
 		err = errors.New("error unmarshalling pipeline data")
@@ -286,17 +287,8 @@ func (s *PostgresStorage) GetPipeline(id string) (pipelineData *data.Pipeline, e
 	return
 }
 
-var stringToStatus = map[string]models.Status{
-	"Pending":   models.StatusPending,
-	"Running":   models.StatusRunning,
-	"Completed": models.StatusCompleted,
-	"Failed":    models.StatusFailed,
-	"Skipped":   models.StatusSkipped,
-	"Unknown":   models.StatusUnknown,
-}
-
 func (s *PostgresStorage) GetState(instanceID string) (state *WorkflowState, err error) {
-	query := `SELECT instance_id, instance_version, workflow_id, workflow_version, status FROM workflow_state WHERE instance_id = $1`
+	query := `SELECT instance_id, workflow_id, workflow_version, instance_version, status FROM workflow_state WHERE instance_id = $1`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to get workflow state: %v", err)
@@ -306,26 +298,26 @@ func (s *PostgresStorage) GetState(instanceID string) (state *WorkflowState, err
 	row := statement.QueryRow(instanceID)
 	state = &WorkflowState{}
 	var status string
-	err = row.Scan(&state.InstanceId, &state.InstanceVersion, &state.WorkflowId, &state.WorkflowVersion, &status)
+	err = row.Scan(&state.InstanceId, &state.WorkflowId, &state.WorkflowVersion, &state.InstanceVersion, &status)
 	if err != nil {
 		logger.ErrorF("Error scanning row for workflow state: %v", err)
 		err = errors.New("error scanning workflow state")
 		return
 	}
-	state.Status = stringToStatus[status]
+	state.Status = models.StringToStatus[status]
 	return
 }
 
-func (s *PostgresStorage) GetNextPendingStep(instanceID string) (pendingStep *PendingStep, err error) {
+func (s *PostgresStorage) GetAndRemoveNextPendingStep(instanceID string) (pendingStep *PendingStep, err error) {
 	// fetch the earliest pending step based on the created timestamp
-	query := `SELECT data FROM pending_steps WHERE instance_id = $1 AND is_deleted = false ORDER BY created_at ASC LIMIT 1`
+	query := `SELECT data FROM pending_steps WHERE instance_id = $1 AND is_deleted = $2 ORDER BY created_at ASC LIMIT 1`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to get next pending step: %v", err)
 		err = errors.New("error preparing statement to get next pending step")
 		return
 	}
-	row := statement.QueryRow(instanceID)
+	row := statement.QueryRow(instanceID, false)
 	pendingStep = &PendingStep{}
 	var pendingStepJSON []byte
 	err = row.Scan(&pendingStepJSON)
@@ -338,24 +330,37 @@ func (s *PostgresStorage) GetNextPendingStep(instanceID string) (pendingStep *Pe
 		err = errors.New("error scanning pending step")
 		return
 	}
-	err = json.Unmarshal(pendingStepJSON, pendingStep)
+	err = codec.JsonCodec().DecodeBytes(pendingStepJSON, pendingStep)
 	if err != nil {
 		logger.ErrorF("Error unmarshalling pending step: %v", err)
 		err = errors.New("error unmarshalling pending step")
+		return
+	}
+	query = `UPDATE pending_steps SET is_deleted = $1 WHERE id = $2`
+	statement, err = s.PrepareStatement(query)
+	if err != nil {
+		logger.ErrorF("Error preparing statement to delete pending step: %v", err)
+		err = errors.New("error preparing statement to delete pending step")
+		return
+	}
+	_, err = statement.Exec(true, pendingStep.Id)
+	if err != nil {
+		logger.ErrorF("Error executing query to delete pending step: %v", err)
+		err = errors.New("error deleting pending step")
 		return
 	}
 	return
 }
 
 func (s *PostgresStorage) GetPendingSteps(instanceID string) (pendingSteps []*PendingStep, err error) {
-	query := `SELECT data FROM pending_steps WHERE instance_id = $1 AND is_deleted = false`
+	query := `SELECT data FROM pending_steps WHERE instance_id = $1 AND status != 'Completed' AND is_deleted = $2`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to get pending steps: %v", err)
 		err = errors.New("error preparing statement to get pending steps")
 		return
 	}
-	rows, err := statement.Query(instanceID)
+	rows, err := statement.Query(instanceID, false)
 	if err != nil {
 		logger.ErrorF("Error executing query to fetch pending steps: %v", err)
 		err = errors.New("error fetching pending steps")
@@ -372,7 +377,7 @@ func (s *PostgresStorage) GetPendingSteps(instanceID string) (pendingSteps []*Pe
 			err = errors.New("error scanning pending step")
 			return
 		}
-		err = json.Unmarshal(pendingStepJSON, pendingStep)
+		err = codec.JsonCodec().DecodeBytes(pendingStepJSON, pendingStep)
 		if err != nil {
 			logger.ErrorF("Error unmarshalling pending step: %v", err)
 			err = errors.New("error unmarshalling pending step")
@@ -384,14 +389,14 @@ func (s *PostgresStorage) GetPendingSteps(instanceID string) (pendingSteps []*Pe
 }
 
 func (s *PostgresStorage) GetStepChangeEvents(instanceID string) (stepChangeEvents []*events.StepChangeEvent, err error) {
-	query := `SELECT instance_id, event_id, status, data  FROM step_change_event WHERE instance_id = $1 AND is_deleted = false`
+	query := `SELECT instance_id, event_id, status, data  FROM step_change_event WHERE instance_id = $1 AND is_deleted = $2`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to get step change events: %v", err)
 		err = errors.New("error preparing statement to get step change events")
 		return
 	}
-	rows, err := statement.Query(instanceID)
+	rows, err := statement.Query(instanceID, false)
 	if err != nil {
 		logger.ErrorF("Error executing query to get step change events: %v", err)
 		err = errors.New("error fetching step change events")
@@ -412,7 +417,7 @@ func (s *PostgresStorage) GetStepChangeEvents(instanceID string) (stepChangeEven
 			err = errors.New("error scanning step change event")
 			return
 		}
-		err = json.Unmarshal(stepChangeEventDataJSON, &stepChangeEvent.Data)
+		err = codec.JsonCodec().DecodeBytes(stepChangeEventDataJSON, &stepChangeEvent.Data)
 		if err != nil {
 			logger.ErrorF("Error unmarshalling step change event data: %v", err)
 			err = errors.New("error unmarshalling step change event data")
@@ -423,17 +428,18 @@ func (s *PostgresStorage) GetStepChangeEvents(instanceID string) (stepChangeEven
 	return
 }
 
-func (s *PostgresStorage) GetStepState(instanceID, stepID string) (stepState *StepState, err error) {
-	query := `SELECT step_id, parent_step, child_count, status, instance_id FROM step_state WHERE instance_id = $1 AND step_id = $2`
+func (s *PostgresStorage) GetStepState(instanceID, stepID string, iteration int) (stepState *StepState, err error) {
+	query := `SELECT step_id, parent_step, child_count, status, instance_id, iteration FROM step_state WHERE instance_id = $1 AND step_id = $2 AND iteration = $3`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to get step state: %v", err)
 		err = errors.New("error preparing statement to get step state")
 		return
 	}
-	row := statement.QueryRow(instanceID, stepID)
+	row := statement.QueryRow(instanceID, stepID, iteration)
 	stepState = &StepState{}
-	err = row.Scan(&stepState.StepId, &stepState.ParentStep, &stepState.ChildCount, &stepState.Status, &stepState.InstanceId)
+	var status string
+	err = row.Scan(&stepState.StepId, &stepState.ParentStep, &stepState.ChildCount, &status, &stepState.InstanceId, &stepState.Iteration)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// no step state found
@@ -443,10 +449,11 @@ func (s *PostgresStorage) GetStepState(instanceID, stepID string) (stepState *St
 		err = errors.New("error scanning step state")
 		return
 	}
+	stepState.Status = models.StringToStatus[status]
 	return
 }
 
-func (s *PostgresStorage) GetStepStates(instanceID string) (stepState map[string]*StepState, err error) {
+func (s *PostgresStorage) GetStepStates(instanceID string) (stepState map[string][]*StepState, err error) {
 	query := `SELECT step_state FROM step_state WHERE instance_id = $1`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
@@ -461,7 +468,7 @@ func (s *PostgresStorage) GetStepStates(instanceID string) (stepState map[string
 		return
 	}
 	defer rows.Close()
-	stepState = make(map[string]*StepState)
+	stepState = make(map[string][]*StepState)
 	for rows.Next() {
 		stepStateItem := &StepState{}
 		var stepStateJSON []byte
@@ -475,13 +482,16 @@ func (s *PostgresStorage) GetStepStates(instanceID string) (stepState map[string
 			err = errors.New("error scanning step state")
 			return
 		}
-		err = json.Unmarshal(stepStateJSON, stepStateItem)
+		err = codec.JsonCodec().DecodeBytes(stepStateJSON, stepStateItem)
 		if err != nil {
 			logger.ErrorF("Error unmarshalling step state: %v", err)
 			err = errors.New("error unmarshalling step state")
 			return
 		}
-		stepState[stepStateItem.StepId] = stepStateItem
+		if _, ok := stepState[stepStateItem.StepId]; !ok {
+			stepState[stepStateItem.StepId] = make([]*StepState, 0)
+		}
+		stepState[stepStateItem.StepId] = append(stepState[stepStateItem.StepId], stepStateItem)
 	}
 	return
 }
@@ -508,7 +518,7 @@ func (s *PostgresStorage) GetWorkflow(workflowID string, version int) (workflow 
 		err = errors.New("error scanning workflow")
 		return
 	}
-	err = json.Unmarshal(workflowDocumentJSON, workflow)
+	err = codec.JsonCodec().DecodeBytes(workflowDocumentJSON, workflow)
 	if err != nil {
 		logger.ErrorF("Error unmarshalling workflow document: %v", err)
 		err = errors.New("error unmarshalling workflow document")
@@ -518,7 +528,7 @@ func (s *PostgresStorage) GetWorkflow(workflowID string, version int) (workflow 
 }
 
 func (s *PostgresStorage) GetWorkflowByInstance(instanceID string) (workflow *models.Workflow, err error) {
-	query := `select workflow_id from workflow_data where id = $1`
+	query := `select workflow_id, workflow_version from workflow_data where instance_id = $1`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement fetch workflow by instance: %v", err)
@@ -526,8 +536,8 @@ func (s *PostgresStorage) GetWorkflowByInstance(instanceID string) (workflow *mo
 		return
 	}
 	row := statement.QueryRow(instanceID)
-	var workflowID string
-	err = row.Scan(&workflowID)
+	var workflowID, workflowVersion string
+	err = row.Scan(&workflowID, &workflowVersion)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// no workflow found
@@ -537,14 +547,14 @@ func (s *PostgresStorage) GetWorkflowByInstance(instanceID string) (workflow *mo
 		err = errors.New("error scanning workflowID")
 		return
 	}
-	query = `select workflow_document from workflows where workflow_id = $1`
+	query = `select workflow_document from workflows where workflow_id = $1 AND version = $2`
 	statement, err = s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to fetch workflows by workflowID: %v", err)
 		err = errors.New("error preparing statement to fetch workflows by workflowID")
 		return
 	}
-	row = statement.QueryRow(workflowID)
+	row = statement.QueryRow(workflowID, workflowVersion)
 	workflow = &models.Workflow{}
 	var workflowDocumentJSON []byte
 	err = row.Scan(&workflowDocumentJSON)
@@ -557,7 +567,7 @@ func (s *PostgresStorage) GetWorkflowByInstance(instanceID string) (workflow *mo
 		err = errors.New("error scanning workflow")
 		return
 	}
-	err = json.Unmarshal(workflowDocumentJSON, workflow)
+	err = codec.JsonCodec().DecodeBytes(workflowDocumentJSON, workflow)
 	if err != nil {
 		logger.ErrorF("Error unmarshalling workflow document: %v", err)
 		err = errors.New("error unmarshalling workflow document")
@@ -665,14 +675,32 @@ func (s *PostgresStorage) ListActions() (actions []*models.ActionSpec, err error
 }
 
 func (s *PostgresStorage) SaveAction(action *models.ActionSpec) (err error) {
+	checkQuery := `SELECT COUNT(*) FROM actions WHERE id = $1`
+	statement, err := s.PrepareStatement(checkQuery)
+	if err != nil {
+		logger.ErrorF("Error preparing statement to check action existence: %v", err)
+		err = errors.New("error preparing statement to check action existence")
+		return
+	}
+	var count int
+	err = statement.QueryRow(action.Id).Scan(&count)
+	if err != nil {
+		logger.ErrorF("Error executing query to check action existence: %v", err)
+		err = errors.New("error checking action existence")
+		return
+	}
+	if count > 0 {
+		logger.InfoF("Action with ID %s already exists", action.Id)
+		return
+	}
 	query := `Insert into actions (id, name, description, endpoint) VALUES ($1, $2, $3, $4)`
-	statement, err := s.PrepareStatement(query)
+	statement, err = s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to save action: %v", err)
 		err = errors.New("error preparing statement to save action")
 		return
 	}
-	endpointJSON, err := json.Marshal(action.Endpoint)
+	endpointJSON, err := codec.JsonCodec().EncodeToBytes(action.Endpoint)
 	if err != nil {
 		logger.ErrorF("Error marshalling endpoint: %v", err)
 		err = errors.New("error marshalling endpoint")
@@ -688,19 +716,20 @@ func (s *PostgresStorage) SaveAction(action *models.ActionSpec) (err error) {
 }
 
 func (s *PostgresStorage) LockInstance(instanceID string) (isLocked bool, err error) {
-	query := `Update workflow_data set is_locked = true where instance_id = $1`
+	query := `Update workflow_data set is_locked = $1 where instance_id = $2`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to lock instance: %v", err)
 		err = errors.New("error preparing statement to lock instance")
 		return
 	}
-	_, err = statement.Exec(instanceID)
+	_, err = statement.Exec(true, instanceID)
 	if err != nil {
 		logger.ErrorF("Error executing query to lock instance: %v", err)
 		err = errors.New("error locking instance")
 		return
 	}
+	isLocked = true
 	return
 }
 
@@ -712,7 +741,7 @@ func (s *PostgresStorage) SaveStepChangeEvent(stepEvent *events.StepChangeEvent)
 		err = errors.New("error preparing statement to save step change event")
 		return
 	}
-	stepEventDataJSON, err := json.Marshal(stepEvent.Data)
+	stepEventDataJSON, err := codec.JsonCodec().EncodeToBytes(stepEvent.Data)
 	if err != nil {
 		logger.ErrorF("Error marshalling step event data: %v", err)
 		err = errors.New("error marshalling step event data")
@@ -728,6 +757,7 @@ func (s *PostgresStorage) SaveStepChangeEvent(stepEvent *events.StepChangeEvent)
 }
 
 func (s *PostgresStorage) SavePipeline(pipeline *data.Pipeline) (err error) {
+	// query := `Insert into workflow_data `
 	query := `UPDATE workflow_data SET pipeline_data = $1 WHERE instance_id = $2`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
@@ -736,7 +766,7 @@ func (s *PostgresStorage) SavePipeline(pipeline *data.Pipeline) (err error) {
 		return
 	}
 	mappedData := pipeline.Map()
-	pipelineJSON, err := json.Marshal(mappedData)
+	pipelineJSON, err := codec.JsonCodec().EncodeToBytes(mappedData)
 	if err != nil {
 		logger.ErrorF("Error marshalling pipeline data: %v", err)
 		err = errors.New("error marshalling pipeline data")
@@ -752,7 +782,7 @@ func (s *PostgresStorage) SavePipeline(pipeline *data.Pipeline) (err error) {
 }
 
 func (s *PostgresStorage) SaveState(workflowState *WorkflowState) (err error) {
-	query := `Insert into workflow_state (instance_id, instance_version, workflow_id, workflow_version, status) VALUES ($1, $2, $3, $4, $5)`
+	query := `Insert into workflow_state (instance_id, workflow_id, workflow_version, instance_version, status) VALUES ($1, $2, $3, $4, $5) on conflict(instance_id, workflow_id, workflow_version) do update set instance_version=$4, status=$5`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to save state: %v", err)
@@ -760,7 +790,7 @@ func (s *PostgresStorage) SaveState(workflowState *WorkflowState) (err error) {
 		return
 	}
 	logger.InfoF("Saving state: %v", workflowState)
-	_, err = statement.Exec(workflowState.InstanceId, workflowState.InstanceVersion, workflowState.WorkflowId, workflowState.WorkflowVersion, workflowState.Status.String())
+	_, err = statement.Exec(workflowState.InstanceId, workflowState.WorkflowId, workflowState.WorkflowVersion, workflowState.InstanceVersion, workflowState.Status.String())
 	if err != nil {
 		logger.ErrorF("Error executing query to save state: %v", err)
 		err = errors.New("error saving workflow state")
@@ -770,14 +800,24 @@ func (s *PostgresStorage) SaveState(workflowState *WorkflowState) (err error) {
 }
 
 func (s *PostgresStorage) SaveStepState(stepState *StepState) (err error) {
-	query := `INSERT INTO step_state (step_id, parent_step, child_count, status, instance_id) VALUES ($1, $2, $3, $4, $5)`
+	query := `INSERT INTO step_state (instance_id, step_id, iteration, parent_step, child_count, status, step_state) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7) 
+		ON Conflict(instance_id, step_id, iteration) 
+		DO UPDATE set parent_step=$4, child_count=$5, status=$6, step_state=$7`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to save step state: %v", err)
 		err = errors.New("error preparing statement to save step state")
 		return
 	}
-	_, err = statement.Exec(stepState.StepId, stepState.ParentStep, stepState.ChildCount, stepState.Status.String(), stepState.InstanceId)
+	var stepStateJSON []byte
+	stepStateJSON, err = codec.JsonCodec().EncodeToBytes(stepState)
+	if err != nil {
+		logger.ErrorF("Error marshalling step state data: %v", err)
+		err = errors.New("error marshalling step state data")
+		return
+	}
+	_, err = statement.Exec(stepState.InstanceId, stepState.StepId, stepState.Iteration, stepState.ParentStep, stepState.ChildCount, stepState.Status.String(), stepStateJSON)
 	if err != nil {
 		logger.ErrorF("Error executing query to save step state: %v", err)
 		err = errors.New("error saving step state")
@@ -787,14 +827,32 @@ func (s *PostgresStorage) SaveStepState(stepState *StepState) (err error) {
 }
 
 func (s *PostgresStorage) SaveWorkflow(workflow *models.Workflow) (err error) {
+	checkQuery := `SELECT COUNT(*) FROM workflows WHERE workflow_id = $1 AND version = $2`
+	statement, err := s.PrepareStatement(checkQuery)
+	if err != nil {
+		logger.ErrorF("Error preparing statement to check workflow existence: %v", err)
+		err = errors.New("error preparing statement to check workflow existence")
+		return
+	}
+	var count int
+	err = statement.QueryRow(workflow.Id, workflow.Version).Scan(&count)
+	if err != nil {
+		logger.ErrorF("Error executing query to check workflow existence: %v", err)
+		err = errors.New("error checking workflow existence")
+		return
+	}
+	if count > 0 {
+		logger.InfoF("Workflow with ID %s and version %d already exists", workflow.Id, workflow.Version)
+		return
+	}
 	query := `INSERT INTO workflows (workflow_id, version, name, description, workflow_document) VALUES ($1, $2, $3, $4, $5)`
-	statement, err := s.PrepareStatement(query)
+	statement, err = s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to save workflow: %v", err)
 		err = errors.New("error preparing statement to save workflow")
 		return
 	}
-	workflowDocumentJSON, err := json.Marshal(workflow)
+	workflowDocumentJSON, err := codec.JsonCodec().EncodeToBytes(workflow)
 	if err != nil {
 		logger.ErrorF("Error marshalling workflow document: %v", err)
 		err = errors.New("error marshalling workflow document")
@@ -810,14 +868,14 @@ func (s *PostgresStorage) SaveWorkflow(workflow *models.Workflow) (err error) {
 }
 
 func (s *PostgresStorage) UnlockInstance(instanceID string) (err error) {
-	query := `UPDATE workflow_data set is_locked = false where instance_id = $1`
+	query := `UPDATE workflow_data set is_locked = $1 where instance_id = $2`
 	statement, err := s.PrepareStatement(query)
 	if err != nil {
 		logger.ErrorF("Error preparing statement to unlock instance: %v", err)
 		err = errors.New("error preparing statement to unlock instance")
 		return
 	}
-	_, err = statement.Exec(instanceID)
+	_, err = statement.Exec(false, instanceID)
 	if err != nil {
 		logger.ErrorF("Error executing query to unlock instance: %v", err)
 		err = errors.New("error unlocking instance")

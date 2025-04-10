@@ -41,6 +41,7 @@ type WorkflowState struct {
 type StepState struct {
 	InstanceId string         `json:"instance_id" yaml:"instance_id"`
 	StepId     string         `json:"step_id" yaml:"step_id"`
+	Iteration  int            `json:"iteration" yaml:"iteration"`
 	ParentStep string         `json:"parent_step" yaml:"parent_step"`
 	ChildCount int            `json:"child_count" yaml:"child_count"`
 	Status     models.Status  `json:"status" yaml:"status"`
