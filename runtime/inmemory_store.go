@@ -14,7 +14,7 @@ type InMemoryStorage struct {
 	workflows        map[string]map[int]*models.Workflow  // workflowId -> version -> Workflow
 	instances        map[string]*data.Pipeline            // instanceId -> Pipeline
 	workflowStates   map[string]*WorkflowState            // instanceId -> WorkflowState
-	stepStates       map[string]map[string]*StepState     // instanceId -> stepId -> StepState
+	stepStates       map[string]map[string][]*StepState   // instanceId -> stepId -> StepState
 	stepChangeEvents map[string][]*events.StepChangeEvent // instanceId -> StepChangeEvents
 	pendingSteps     map[string][]*PendingStep
 	lockedInstances  map[string]bool // instanceId -> locked (true/false)
@@ -27,7 +27,7 @@ func NewInMemoryStorage(c *config.StorageConfig) *InMemoryStorage {
 		workflows:        make(map[string]map[int]*models.Workflow),
 		instances:        make(map[string]*data.Pipeline),
 		workflowStates:   make(map[string]*WorkflowState),
-		stepStates:       make(map[string]map[string]*StepState),
+		stepStates:       make(map[string]map[string][]*StepState),
 		stepChangeEvents: make(map[string][]*events.StepChangeEvent),
 		pendingSteps:     make(map[string][]*PendingStep),
 		lockedInstances:  make(map[string]bool),
@@ -138,13 +138,17 @@ func (s *InMemoryStorage) GetState(instanceId string) (*WorkflowState, error) {
 	return state, nil
 }
 
-func (s *InMemoryStorage) GetNextPendingStep(instanceId string) (*PendingStep, error) {
+func (s *InMemoryStorage) GetAndRemoveNextPendingStep(instanceId string) (*PendingStep, error) {
 
 	steps, ok := s.pendingSteps[instanceId]
 	if !ok || len(steps) == 0 {
 		return nil, nil
 	}
-	return steps[0], nil
+	// Remove the first step from the list
+	step := steps[0]
+	s.pendingSteps[instanceId] = steps[1:]
+	// Return the removed step
+	return step, nil
 }
 
 func (s *InMemoryStorage) GetPendingSteps(instanceId string) (steps []*PendingStep, err error) {
@@ -163,25 +167,32 @@ func (s *InMemoryStorage) GetStepChangeEvents(instanceId string) (events []*even
 	return
 }
 
-func (s *InMemoryStorage) GetStepStates(instanceId string) (map[string]*StepState, error) {
+func (s *InMemoryStorage) GetStepStates(instanceId string) (map[string][]*StepState, error) {
 
-	stepStatesMap := s.stepStates[instanceId]
-	if stepStatesMap == nil {
-		stepStatesMap = make(map[string]*StepState)
-		s.stepStates[instanceId] = stepStatesMap
+	// stepStatesMap := s.stepStates[instanceId]
+	// if stepStatesMap == nil {
+	// 	stepStatesMap = make(map[string][]*StepState, 0)
+	// 	s.stepStates[instanceId] = append(s.stepStates[instanceId], stepStatesMap)
+	// }
+	stepStates, exists := s.stepStates[instanceId]
+	if !exists {
+		return nil, errors.New("instance not found")
 	}
-	return stepStatesMap, nil
+	return stepStates, nil
+	// return nil, nil
 }
 
-func (s *InMemoryStorage) GetStepState(instanceId, stepId string) (*StepState, error) {
+func (s *InMemoryStorage) GetStepState(instanceId, stepId string, iteration int) (*StepState, error) {
 
-	stepStatesMap := s.stepStates[instanceId]
-	if stepStatesMap == nil {
-		stepStatesMap = make(map[string]*StepState)
-		s.stepStates[instanceId] = stepStatesMap
+	stepStates, exists := s.stepStates[instanceId]
+	if !exists {
+		return nil, errors.New("instance not found")
 	}
-
-	return stepStatesMap[stepId], nil
+	steps, exists := stepStates[stepId]
+	if !exists || iteration >= len(steps) {
+		return nil, errors.New("step state not found")
+	}
+	return steps[iteration], nil
 }
 
 func (s *InMemoryStorage) GetWorkflow(workflowId string, version int) (*models.Workflow, error) {
@@ -266,11 +277,10 @@ func (s *InMemoryStorage) SaveState(workflowState *WorkflowState) error {
 
 func (s *InMemoryStorage) SaveStepState(stepState *StepState) error {
 
-	if _, ok := s.stepStates[stepState.InstanceId]; !ok {
-		s.stepStates[stepState.InstanceId] = make(map[string]*StepState)
+	if _, exists := s.stepStates[stepState.InstanceId]; !exists {
+		s.stepStates[stepState.InstanceId] = make(map[string][]*StepState)
 	}
-	s.stepStates[stepState.InstanceId][stepState.StepId] = stepState
-
+	s.stepStates[stepState.InstanceId][stepState.StepId] = append(s.stepStates[stepState.InstanceId][stepState.StepId], stepState)
 	return nil
 }
 
